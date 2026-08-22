@@ -103,6 +103,9 @@ const mDeepDive = calculateMortgageDeepDive(mortgageTest, 200);
 assert(mDeepDive.biweeklyYearsSaved > 0, 'Bi-weekly mortgage schedule trims years off standard amortization');
 assert(mDeepDive.currentLTV > 0 && mDeepDive.currentLTV < 100, 'Calculates loan-to-value ratio accurately');
 
+// 8. Zack Canine Companion & Financial Mood Engine Functional Flow Tests
+import { runZackFunctionalTests } from './zack-companion-tests';
+runZackFunctionalTests(assert);
 
 console.log(`\n========================================`);
 console.log(`Results: ${passed} passed, ${failed} failed.`);

@@ -33,6 +33,7 @@ import {
 } from 'recharts';
 import { Transaction, VaultStats } from '../types';
 import { STANDARD_CATEGORIES, getCategoryColor } from '../utils/categorizer';
+import { calculateZackFinancialMood } from '../utils/zackMoodEngine';
 
 interface DashboardViewProps {
   transactions: Transaction[];
@@ -57,6 +58,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>('all');
   const [drilldownCategory, setDrilldownCategory] = useState<string | null>(null);
+
+  // Compute Zack's dynamic financial mood for the dashboard
+  const zackState = useMemo(() => {
+    return calculateZackFinancialMood(transactions, stats);
+  }, [transactions, stats]);
 
   // Compute date-filtered transactions for interactive period switcher
   const filteredTransactions = useMemo(() => {
@@ -194,9 +200,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Top Banner with Interactive Timeframe Tabs */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-            Financial Overview
-          </h2>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              Financial Overview
+            </h2>
+            <div 
+              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/50 border border-amber-200/80 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-mono font-medium"
+              title={`Zack's Financial Stance: ${zackState.archetypeLabel} (${zackState.unlockedCount}/${zackState.totalMilestones} Milestones)`}
+            >
+              <span>🐕</span>
+              <span className="font-bold">{zackState.archetypeBadge}</span>
+              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">• {zackState.excitementLevel}% Excitement</span>
+            </div>
+          </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Real-time analytics computed directly from your local SQLite database
           </p>

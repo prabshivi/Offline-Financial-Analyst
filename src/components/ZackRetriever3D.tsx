@@ -18,6 +18,8 @@ export type Zack3DMood =
   | 'error' 
   | 'fetching';
 
+export type ZackAccessoryType = 'none' | 'star_aura' | 'gold_medal' | 'party_hat' | 'crown' | 'shield_badge';
+
 interface ZackRetriever3DProps {
   mood?: Zack3DMood;
   isPasswordMode?: boolean;
@@ -33,6 +35,9 @@ interface ZackRetriever3DProps {
   cameraDistance?: number;
   allowBellyRub?: boolean;
   interactive?: boolean;
+  excitementLevel?: number; // 0 to 100
+  contentmentLevel?: number; // 0 to 100
+  accessory?: ZackAccessoryType;
 }
 
 export const ZackRetriever3D: React.FC<ZackRetriever3DProps> = ({
@@ -49,6 +54,9 @@ export const ZackRetriever3D: React.FC<ZackRetriever3DProps> = ({
   customSpeech = null,
   allowBellyRub = true,
   interactive = true,
+  excitementLevel = 35,
+  contentmentLevel = 50,
+  accessory = 'none',
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [internalMood, setInternalMood] = useState<Zack3DMood>('idle');
@@ -221,13 +229,16 @@ export const ZackRetriever3D: React.FC<ZackRetriever3DProps> = ({
     }
   };
 
-  // Dynamic Tail Wagging Velocity
-  const tailSpeed = 
-    activeMood === 'zoomies' ? 0.16 :
-    activeMood === 'happy' || isHovered ? 0.35 :
-    activeMood === 'panting' ? 0.45 :
+  // Dynamic Tail Wagging Velocity scales with mood & excitement level
+  const baseTailSpeed = 
+    activeMood === 'zoomies' ? 0.14 :
+    activeMood === 'happy' || isHovered ? 0.28 :
+    activeMood === 'panting' ? 0.38 :
     activeMood === 'sleeping' ? 2.5 :
-    0.75;
+    0.68;
+  const tailSpeed = activeMood === 'sleeping' 
+    ? 2.5 
+    : Math.max(0.11, baseTailSpeed * (1 - (excitementLevel / 220)));
 
   return (
     <div
@@ -237,6 +248,26 @@ export const ZackRetriever3D: React.FC<ZackRetriever3DProps> = ({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
+      {/* High Excitement Sparkles & Star Particles - Contained within companion frame */}
+      {excitementLevel >= 55 && (
+        <motion.div
+          animate={{ opacity: [0.6, 1, 0.6], scale: [0.95, 1.1, 0.95], y: [-2, 2, -2] }}
+          transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}
+          className="absolute top-1 right-5 text-amber-300 font-bold text-xs pointer-events-none filter drop-shadow-md select-none z-30"
+        >
+          ✨
+        </motion.div>
+      )}
+      {excitementLevel >= 75 && (
+        <motion.div
+          animate={{ opacity: [0.5, 1, 0.5], scale: [0.9, 1.15, 0.9], y: [2, -2, 2] }}
+          transition={{ repeat: Infinity, duration: 2.2, delay: 0.4, ease: 'easeInOut' }}
+          className="absolute top-2 left-5 text-yellow-400 font-bold text-xs pointer-events-none filter drop-shadow-md select-none z-30"
+        >
+          ⭐
+        </motion.div>
+      )}
+
       {/* Floating Interactive Hearts & Sparkles Particles */}
       <AnimatePresence>
         {hearts.map(h => (
@@ -429,7 +460,7 @@ export const ZackRetriever3D: React.FC<ZackRetriever3DProps> = ({
             <path d="M116 165 C116 162 118 161 120 161" stroke="#92400E" strokeWidth="1" fill="none" />
             <path d="M128 161 C130 161 132 162 132 165" stroke="#92400E" strokeWidth="1" fill="none" />
 
-            {/* Bridle Leather Collar with Vault Medallion */}
+            {/* Bridle Leather Collar with Vault Medallion & Milestone Trophy */}
             <path
               d="M75 106 C85 112 115 112 125 106 C126 109 124 112 122 113 C112 118 88 118 78 113 C76 112 74 109 75 106 Z"
               fill="url(#collarGrad)"
@@ -437,8 +468,19 @@ export const ZackRetriever3D: React.FC<ZackRetriever3DProps> = ({
               strokeWidth="0.8"
             />
             {/* Collar Stitching & Hardware Tag */}
-            <circle cx="100" cy="115" r="4.5" fill="#F59E0B" stroke="#78350F" strokeWidth="0.8" />
-            <circle cx="100" cy="115" r="2" fill="#FEF08A" />
+            {accessory === 'gold_medal' || accessory === 'crown' || accessory === 'shield_badge' ? (
+              <g transform="translate(100, 116)">
+                <circle cx="0" cy="0" r="5.5" fill="#F59E0B" stroke="#78350F" strokeWidth="0.8" />
+                <circle cx="0" cy="0" r="3.5" fill="#FDE047" />
+                {/* Mini Star / Shield on Medal */}
+                <path d="M0 -2.2 L0.7 -0.7 L2.2 -0.5 L1.1 0.6 L1.4 2.1 L0 1.3 L-1.4 2.1 L-1.1 0.6 L-2.2 -0.5 L-0.7 -0.7 Z" fill="#B45309" />
+              </g>
+            ) : (
+              <>
+                <circle cx="100" cy="115" r="4.5" fill="#F59E0B" stroke="#78350F" strokeWidth="0.8" />
+                <circle cx="100" cy="115" r="2" fill="#FEF08A" />
+              </>
+            )}
           </motion.g>
 
           {/* 3. Golden Retriever Head, Facial Anatomy & Expressive Features */}
@@ -454,6 +496,20 @@ export const ZackRetriever3D: React.FC<ZackRetriever3DProps> = ({
               y: { repeat: Infinity, duration: 0.35, ease: 'easeInOut' }
             }}
           >
+            {/* Ambient Star Aura behind head */}
+            {accessory === 'star_aura' && (
+              <g transform="translate(100, 42)">
+                <motion.g
+                  animate={{ rotate: [0, 360], scale: [1, 1.08, 1] }}
+                  transition={{ rotate: { repeat: Infinity, duration: 16, ease: 'linear' }, scale: { repeat: Infinity, duration: 2.5, ease: 'easeInOut' } }}
+                  style={{ transformOrigin: '0px 0px' }}
+                >
+                  <circle cx="0" cy="0" r="34" fill="none" stroke="#FDE047" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.6" />
+                  <circle cx="0" cy="0" r="38" fill="none" stroke="#F59E0B" strokeWidth="1" strokeDasharray="2 6" opacity="0.4" />
+                </motion.g>
+              </g>
+            )}
+
             {/* Flop Ears with Natural Golden Waves */}
             {/* Left Ear */}
             <motion.g
@@ -502,6 +558,58 @@ export const ZackRetriever3D: React.FC<ZackRetriever3DProps> = ({
               d="M65 45 C65 25 80 18 100 18 C120 18 135 25 135 45 C135 70 130 85 100 85 C70 85 65 70 65 45 Z"
               fill="url(#furBase)"
             />
+
+            {/* Special Milestone Head Accessories - Anchored precisely on top of skull at (x=100, y=18) */}
+            {accessory === 'crown' && (
+              <g transform="translate(85, 2)">
+                <motion.g
+                  initial={{ scale: 0, y: -8 }}
+                  animate={{ scale: 1, y: 0 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 18 }}
+                  style={{ transformOrigin: '15px 16px' }}
+                >
+                  {/* 3-Pointed Golden Royal Crown */}
+                  <path d="M0 16 L3 4 L11 11 L15 1 L19 11 L27 4 L30 16 Z" fill="#F59E0B" stroke="#78350F" strokeWidth="1" />
+                  <rect x="0" y="16" width="30" height="3" rx="1" fill="#D97706" />
+                  {/* Crown Jewels */}
+                  <circle cx="15" cy="5" r="1.6" fill="#EF4444" />
+                  <circle cx="5" cy="8" r="1.3" fill="#3B82F6" />
+                  <circle cx="25" cy="8" r="1.3" fill="#10B981" />
+                </motion.g>
+              </g>
+            )}
+
+            {accessory === 'party_hat' && (
+              <g transform="translate(90, -8)">
+                <motion.g
+                  initial={{ scale: 0, rotate: -15 }}
+                  animate={{ scale: 1, rotate: -6 }}
+                  transition={{ type: 'spring', stiffness: 350, damping: 20 }}
+                  style={{ transformOrigin: '10px 24px' }}
+                >
+                  {/* Party Cone Hat */}
+                  <path d="M0 24 L10 2 L20 24 Z" fill="#6366F1" stroke="#4338CA" strokeWidth="0.8" />
+                  <path d="M4 16 L16 16 L18 20 L2 20 Z" fill="#F43F5E" />
+                  <path d="M6 10 L14 10 L15 13 L5 13 Z" fill="#FBBF24" />
+                  {/* Pom-pom */}
+                  <circle cx="10" cy="2" r="3" fill="#FDE047" />
+                </motion.g>
+              </g>
+            )}
+
+            {accessory === 'shield_badge' && (
+              <g transform="translate(92, 6)">
+                <motion.g
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 350, damping: 20 }}
+                  style={{ transformOrigin: '8px 9px' }}
+                >
+                  <path d="M8 0 L16 3 L16 9 C16 14 8 18 8 18 C8 18 0 14 0 9 L0 3 Z" fill="#0284C7" stroke="#0369A1" strokeWidth="0.8" />
+                  <path d="M4 8 L7 11 L12 5" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                </motion.g>
+              </g>
+            )}
 
             {/* Forehead Ridge / Fur Texture */}
             <path d="M96 24 C98 32 100 38 100 45" stroke="#B45309" strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />

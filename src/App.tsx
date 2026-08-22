@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Header } from './components/Header';
 import { SidebarNav } from './components/SidebarNav';
 import { DashboardView } from './components/DashboardView';
@@ -14,7 +14,7 @@ import { AddTransactionModal } from './components/AddTransactionModal';
 import { TransactionDetailModal } from './components/TransactionDetailModal';
 import { VaultLockScreen } from './components/VaultLockScreen';
 import { ZackRoamingCompanion } from './components/ZackRoamingCompanion';
-import { Transaction, Rule, VaultHealth, StagingTransaction } from './types';
+import { Transaction, Rule, VaultHealth, StagingTransaction, VaultStats } from './types';
 import { api } from './utils/api';
 import { DEFAULT_RULES } from './utils/categorizer';
 
@@ -38,6 +38,33 @@ export default function App() {
   const [lastLoginTime, setLastLoginTime] = useState<string>(() => {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   });
+
+  // Derived vault statistics
+  const vaultStats = useMemo<VaultStats>(() => {
+    let totalInflow = 0;
+    let totalOutflow = 0;
+    const instSet = new Set<string>();
+    for (const t of transactions) {
+      const amt = Number(t.amount) || 0;
+      if (amt > 0 || t.type === 'inflow') totalInflow += amt;
+      else totalOutflow += Math.abs(amt);
+      if (t.institution) instSet.add(t.institution);
+    }
+    const netSavings = totalInflow - totalOutflow;
+    const savingsRate = totalInflow > 0 ? (netSavings / totalInflow) * 100 : 0;
+    return {
+      totalInflow,
+      totalOutflow,
+      netSavings,
+      savingsRate,
+      transactionCount: transactions.length,
+      institutionCount: instSet.size,
+      categoryBreakdown: [],
+      monthlyTrend: [],
+      topMerchants: [],
+      institutionBreakdown: []
+    };
+  }, [transactions]);
 
   const handleUnlockVault = () => {
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -269,7 +296,7 @@ export default function App() {
                 {activeTab === 'dashboard' && (
                   <DashboardView
                     transactions={transactions}
-                    stats={null}
+                    stats={vaultStats}
                     isDarkMode={isDarkMode}
                     onNavigate={(tab) => setActiveTab(tab)}
                     onOpenAddModal={() => setIsAddModalOpen(true)}
@@ -380,6 +407,10 @@ export default function App() {
         activeTab={activeTab}
         transactionCount={transactions.length}
         isVaultLocked={isVaultLocked}
+        transactions={transactions}
+        stats={vaultStats}
+        health={health}
+        onNavigate={(tab) => setActiveTab(tab)}
       />
     </div>
   );

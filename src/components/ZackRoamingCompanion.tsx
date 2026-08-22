@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ZackRetriever3D, Zack3DMood } from './ZackRetriever3D';
+import { ZackRetriever3D, Zack3DMood, ZackAccessoryType } from './ZackRetriever3D';
 import {
   X,
   EyeOff,
@@ -8,15 +8,30 @@ import {
   Moon,
   ChevronDown,
   Sparkles,
-  Move,
-  RotateCcw,
+  Flame,
+  Trophy,
+  Award,
+  TrendingUp,
+  ShieldCheck,
+  CheckCircle2,
+  Lock,
+  ArrowRight,
+  Zap,
+  Heart,
+  HelpCircle,
   Volume2
 } from 'lucide-react';
+import { Transaction, VaultStats, VaultHealth } from '../types';
+import { calculateZackFinancialMood, ZackFinancialMoodState, ZackMilestone } from '../utils/zackMoodEngine';
 
-interface ZackRoamingCompanionProps {
+export interface ZackRoamingCompanionProps {
   activeTab?: string;
   transactionCount?: number;
   isVaultLocked?: boolean;
+  transactions?: Transaction[];
+  stats?: VaultStats | null;
+  health?: VaultHealth | null;
+  onNavigate?: (tab: string) => void;
 }
 
 interface ToyItem {
@@ -37,7 +52,11 @@ interface Footprint {
 export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
   activeTab = 'dashboard',
   transactionCount = 0,
-  isVaultLocked = false
+  isVaultLocked = false,
+  transactions = [],
+  stats = null,
+  health = null,
+  onNavigate
 }) => {
   const [isEnabled, setIsEnabled] = useState<boolean>(() => {
     const saved = localStorage.getItem('zack_companion_enabled');
@@ -46,18 +65,29 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
 
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [isGhostMode, setIsGhostMode] = useState<boolean>(false);
-  const [isRoaming, setIsRoaming] = useState<boolean>(false);
-  const [facingLeft, setFacingLeft] = useState<boolean>(true);
   const [mood, setMood] = useState<Zack3DMood>('idle');
   const [customSpeech, setCustomSpeech] = useState<string | null>(null);
   const [activeToy, setActiveToy] = useState<ToyItem | null>(null);
   const [isFetching, setIsFetching] = useState<boolean>(false);
   const [showControls, setShowControls] = useState<boolean>(false);
+  const [isMilestoneHubOpen, setIsMilestoneHubOpen] = useState<boolean>(false);
+  const [celebratingMilestone, setCelebratingMilestone] = useState<string | null>(null);
   const [footprints, setFootprints] = useState<Footprint[]>([]);
   const [dockSide, setDockSide] = useState<'right' | 'left'>('right');
 
   const speechTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const roamIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Compute rich financial mood state
+  const financialState: ZackFinancialMoodState = useMemo(() => {
+    return calculateZackFinancialMood(transactions, stats, health);
+  }, [transactions, stats, health]);
+
+  // Sync mood with financial state when idle
+  useEffect(() => {
+    if (!isVaultLocked && mood === 'idle') {
+      setMood(financialState.mood);
+    }
+  }, [financialState.mood, isVaultLocked, mood]);
 
   // Save user preferences
   useEffect(() => {
@@ -65,7 +95,7 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
   }, [isEnabled]);
 
   // Speech helper
-  const say = useCallback((text: string, durationMs = 3500) => {
+  const say = useCallback((text: string, durationMs = 4000) => {
     if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
     setCustomSpeech(text);
     speechTimerRef.current = setTimeout(() => {
@@ -79,40 +109,68 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
 
     if (isVaultLocked) {
       setMood('idle');
-      say("Vault locked & secured! Enter PIN to unlock. 🛡️🐾", 3500);
+      say("Vault locked & secured! Enter Master Passphrase to unlock. 🛡️🐾", 3500);
       return;
     }
 
     const tabReactions: Record<string, string> = {
-      dashboard: "Financial overview loaded! 📊🐶",
-      budget: "Monthly budget tracker active! 🦴💵",
-      'debt-payoff': "Mortgage & Debt Eliminator! ⚡",
-      ingestion: "Bank statement dropzone ready! 📂✨",
-      'auto-fetch': "Automated PDF statement sync! 🎾",
-      ledger: "Full transaction ledger! 🔍",
-      rules: "Smart categorization rules! 🧠",
-      security: "Encrypted & secured locally! 🛡️",
-      nightly: "Security Peace of Mind Audit! ✨🛡️"
+      dashboard: `Overview loaded! Mood: ${financialState.archetypeLabel} 📊🐶`,
+      budget: "Budgets ready! Sniffing out spending targets! 🦴💵",
+      'debt-payoff': "Payoff & Loans! Let's eliminate balances together! ⚡",
+      ingestion: "Import Statements ready! Upload your bank files! 📂✨",
+      'auto-fetch': "Auto-Import ready! Drop files to sync automatically! 🎾",
+      ledger: "Transactions history loaded! 🔍",
+      rules: "Smart Category rules ready! 🧠",
+      security: "Private Backup & Vault active! 🛡️",
+      nightly: "Security Health check! All private & safe! ✨🛡️"
     };
 
     if (tabReactions[activeTab]) {
-      setMood('happy');
+      setMood(financialState.mood === 'zoomies' ? 'zoomies' : 'happy');
       say(tabReactions[activeTab], 3200);
-      const timer = setTimeout(() => setMood('idle'), 2200);
+      const timer = setTimeout(() => setMood(financialState.mood), 2400);
       return () => clearTimeout(timer);
     }
-  }, [activeTab, isEnabled, isVaultLocked, say]);
+  }, [activeTab, isEnabled, isVaultLocked, financialState.archetypeLabel, financialState.mood, say]);
 
-  // React to new transactions added
-  const prevCountRef = useRef(transactionCount);
+  // Milestone change detection & reactive celebration
+  const prevUnlockedRef = useRef(financialState.unlockedCount);
+  const prevCountRef = useRef(transactionCount || transactions.length);
+
   useEffect(() => {
-    if (transactionCount > prevCountRef.current && prevCountRef.current !== 0) {
+    const currentTxCount = transactionCount || transactions.length;
+    
+    // Check if new milestone was unlocked
+    if (financialState.unlockedCount > prevUnlockedRef.current && prevUnlockedRef.current !== 0) {
+      const newlyUnlocked = financialState.milestones.find(m => m.isUnlocked);
       setMood('zoomies');
-      say("Woof! New transaction saved to local vault! 🎉🐾", 3800);
-      setTimeout(() => setMood('happy'), 2500);
+      setCelebratingMilestone(newlyUnlocked ? newlyUnlocked.title : 'Milestone');
+      say(`🎉 WOOF! Milestone Unlocked: ${newlyUnlocked?.title || 'Financial Triumph'}! ${newlyUnlocked?.celebrationMessage || '🐾'}`, 5000);
+      
+      const timer = setTimeout(() => {
+        setCelebratingMilestone(null);
+        setMood(financialState.mood);
+      }, 5000);
+      return () => clearTimeout(timer);
     }
-    prevCountRef.current = transactionCount;
-  }, [transactionCount, say]);
+
+    // Check if new transaction was added
+    if (currentTxCount > prevCountRef.current && prevCountRef.current !== 0) {
+      const diff = currentTxCount - prevCountRef.current;
+      setMood(currentTxCount >= 10 ? 'zoomies' : 'happy');
+      say(
+        diff > 1 
+          ? `WOOF! Ingested batch of ${diff} transactions! Vault updated! 🚀🦴` 
+          : `Woof! New transaction saved locally! Total: ${currentTxCount} records! 🐾✨`,
+        4200
+      );
+      const timer = setTimeout(() => setMood(financialState.mood), 3000);
+      return () => clearTimeout(timer);
+    }
+
+    prevUnlockedRef.current = financialState.unlockedCount;
+    prevCountRef.current = currentTxCount;
+  }, [financialState.unlockedCount, financialState.milestones, financialState.mood, transactionCount, transactions.length, say]);
 
   // Footprints cleanup
   useEffect(() => {
@@ -156,9 +214,15 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
         setIsFetching(false);
         setMood('happy');
         say("*Tail wagging* Caught it & brought it back! 🐾", 2600);
-        setTimeout(() => setMood('idle'), 2000);
+        setTimeout(() => setMood(financialState.mood), 2000);
       }, 1000);
     }, 700);
+  };
+
+  const triggerMilestoneCelebration = () => {
+    setMood('zoomies');
+    say(`WOOF! Celebrating all ${financialState.unlockedCount} unlocked milestones! 🚀👑🐾`, 4500);
+    setTimeout(() => setMood(financialState.mood), 4000);
   };
 
   if (!isEnabled) {
@@ -188,7 +252,7 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
               opacity: 0, 
               scale: 0.4, 
               x: activeToy.startX, 
-              y: -80,
+              y: -80, 
               rotate: 0 
             }}
             animate={{ 
@@ -238,7 +302,7 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
         ))}
       </AnimatePresence>
 
-      {/* Main Zack Companion Container - Drag-Enabled with Real Spring Physics */}
+      {/* Main Zack Companion Container */}
       <motion.div
         drag
         dragConstraints={{ left: -window.innerWidth + 200, right: 0, top: -window.innerHeight + 200, bottom: 0 }}
@@ -255,29 +319,69 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
         }`}
       >
         {isMinimized ? (
-          /* Minimized Compact Badge (Only 28px tall, ultra-clean) */
+          /* Minimized Compact Badge */
           <div 
             onClick={() => setIsMinimized(false)}
-            className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/95 hover:bg-slate-800 text-amber-300 border border-amber-500/40 text-xs font-mono shadow-xl backdrop-blur-md cursor-pointer transition-all hover:scale-105"
+            className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/95 hover:bg-slate-800 text-amber-300 border border-amber-500/40 text-xs font-mono shadow-xl backdrop-blur-md cursor-pointer transition-all hover:scale-105"
             title="Click to expand Zack the Golden Retriever"
           >
             <span className="text-sm">🐕</span>
             <span className="font-bold text-white text-[11px]">Zack</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+              {financialState.archetypeBadge}
+            </span>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
           </div>
         ) : (
-          /* Sleek, Non-Obstructive Interactive Mascot Card */
+          /* Sleek Interactive Mascot Card */
           <div 
-            className="relative group flex flex-col items-center"
+            className="relative group flex flex-col items-center gap-1.5"
             onMouseEnter={() => setShowControls(true)}
             onMouseLeave={() => setShowControls(false)}
           >
-            {/* Quick Companion Interactive Physics Bar (Reveals on hover) */}
+            {/* 1. Receptive Speech Message Card - Positioned cleanly ABOVE the interaction control bar */}
+            <AnimatePresence>
+              {(customSpeech || celebratingMilestone) && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.88 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.88 }}
+                  transition={{ type: 'spring', stiffness: 450, damping: 25 }}
+                  className="relative z-50 max-w-[290px] bg-slate-950/95 text-amber-200 text-xs px-3.5 py-2 rounded-2xl border border-amber-500/40 shadow-2xl backdrop-blur-md flex items-center gap-2 pointer-events-auto cursor-pointer transition-all hover:scale-102"
+                  onClick={() => setCustomSpeech(null)}
+                  title="Click to dismiss speech message"
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
+                  <span className="font-sans font-medium text-[11.5px] leading-snug text-amber-100 break-words">
+                    {celebratingMilestone 
+                      ? `🎉 WOOF! Unlocked "${celebratingMilestone}" milestone!` 
+                      : customSpeech}
+                  </span>
+                  {/* Downward Speech Bubble Triangle Tail pointing towards companion */}
+                  <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-950 border-b border-r border-amber-500/40 rotate-45 pointer-events-none" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* 2. Quick Companion Interactive Controls Bar */}
             <motion.div 
               initial={{ opacity: 0, y: 5 }}
-              animate={{ opacity: showControls ? 1 : 0.85, y: 0 }}
-              className="mb-1 flex items-center gap-1 bg-slate-950/95 px-2.5 py-1 rounded-full border border-slate-800 shadow-xl backdrop-blur-md pointer-events-auto z-40 transition-all"
+              animate={{ opacity: showControls ? 1 : 0.9, y: 0 }}
+              className="flex items-center gap-1 bg-slate-950/95 px-2.5 py-1 rounded-full border border-slate-800 shadow-xl backdrop-blur-md pointer-events-auto z-40 transition-all"
             >
+              {/* Financial Mood & Milestone Hub Trigger */}
+              <button
+                type="button"
+                onClick={() => setIsMilestoneHubOpen(true)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-amber-500/20 text-[10px] font-mono font-bold text-amber-300 border border-amber-500/30 transition-all hover:scale-105 cursor-pointer"
+                title="Open Zack's Financial Mood & Milestone Trophy Case 🏆"
+              >
+                <Trophy className="w-3 h-3 text-amber-400" />
+                <span>{financialState.unlockedCount}/{financialState.totalMilestones}</span>
+              </button>
+
+              <div className="w-[1px] h-3 bg-slate-700 mx-0.5"></div>
+
               {/* Toss Ball */}
               <button
                 type="button"
@@ -314,9 +418,9 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const nextMood = mood === 'sleeping' ? 'idle' : 'sleeping';
+                  const nextMood = mood === 'sleeping' ? financialState.mood : 'sleeping';
                   setMood(nextMood);
-                  say(nextMood === 'sleeping' ? "Zzz... dog nap! 💤" : "Awake and guarding! 🐾", 2500);
+                  say(nextMood === 'sleeping' ? "Zzz... dog nap! 💤" : `Awake & ready! Mood: ${financialState.archetypeLabel} 🐾`, 2500);
                 }}
                 className="w-6 h-6 rounded-full hover:bg-slate-800 text-xs flex items-center justify-center text-indigo-300 transition-transform hover:scale-115 active:scale-95 cursor-pointer"
                 title="Toggle Sleep / Wake"
@@ -367,19 +471,27 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
               </button>
             </motion.div>
 
-            {/* Dog Mascot Widget */}
-            <div className="pointer-events-auto cursor-grab active:cursor-grabbing">
+            {/* 3. Dog Mascot Widget */}
+            <div 
+              className="pointer-events-auto cursor-grab active:cursor-grabbing"
+              onClick={() => {
+                say(financialState.speechBubble, 3800);
+              }}
+            >
               <ZackRetriever3D
                 mood={mood}
                 width={145}
                 height={125}
-                showSpeech={true}
-                customSpeech={customSpeech}
+                showSpeech={false}
                 interactive={true}
+                excitementLevel={financialState.excitementLevel}
+                contentmentLevel={financialState.contentmentLevel}
+                accessory={financialState.accessory}
                 onInteract={(action) => {
                   if (action === 'boop') {
                     setMood('happy');
-                    setTimeout(() => setMood('idle'), 2000);
+                    say("Boop! Tail wagging at max velocity! 🐾✨", 2500);
+                    setTimeout(() => setMood(financialState.mood), 2000);
                   }
                 }}
               />
@@ -387,6 +499,200 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
           </div>
         )}
       </motion.div>
+
+      {/* Zack's Financial Mood & Milestones Hub Drawer / Modal */}
+      <AnimatePresence>
+        {isMilestoneHubOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <motion.div
+              initial={{ scale: 0.94, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.94, opacity: 0, y: 15 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+              className="relative w-full max-w-2xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-xl">
+                    🐕
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-white flex items-center gap-2">
+                      Zack's Financial Mood & Milestones
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono font-semibold border border-amber-500/30">
+                        {financialState.levelTitle} (Rank {financialState.levelRank}/5)
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-400 font-mono">
+                      State-based emotional canine responsiveness to your vault health
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMilestoneHubOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Content Scrollable Area */}
+              <div className="p-6 space-y-6 overflow-y-auto">
+                {/* 1. Live State & Mood Meters */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Archetype & Speech Card */}
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono text-slate-400">Current Archetype</span>
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold font-mono">
+                        {financialState.archetypeBadge}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs font-sans leading-relaxed italic">
+                      "{financialState.speechBubble}"
+                    </div>
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[11px] font-mono text-slate-400">Canine Stance</span>
+                      <span className="text-xs font-semibold text-white capitalize">{financialState.mood}</span>
+                    </div>
+                  </div>
+
+                  {/* Excitement & Contentment Gauges */}
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between text-xs font-mono mb-1.5">
+                        <span className="flex items-center gap-1 text-amber-400 font-semibold">
+                          <Zap className="w-3.5 h-3.5" /> Excitement Index
+                        </span>
+                        <span className="font-bold text-white">{financialState.excitementLevel}%</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${financialState.excitementLevel}%` }}
+                          transition={{ duration: 0.8, ease: 'easeOut' }}
+                          className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 rounded-full"
+                        />
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-mono mt-1">
+                        Driven by transaction volume, net savings surplus, and active tracking.
+                      </p>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between text-xs font-mono mb-1.5">
+                        <span className="flex items-center gap-1 text-emerald-400 font-semibold">
+                          <Heart className="w-3.5 h-3.5" /> Contentment Index
+                        </span>
+                        <span className="font-bold text-white">{financialState.contentmentLevel}%</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${financialState.contentmentLevel}%` }}
+                          transition={{ duration: 0.8, ease: 'easeOut', delay: 0.1 }}
+                          className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full"
+                        />
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-mono mt-1">
+                        Driven by zero cloud leakage, budget adherence, and positive cash flow.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Milestones Trophy Case */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                        <Trophy className="w-4 h-4 text-amber-400" />
+                        Financial Milestones & Achievements
+                      </h3>
+                      <p className="text-xs text-slate-400 font-mono">
+                        {financialState.unlockedCount} of {financialState.totalMilestones} Milestones Mastered
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={triggerMilestoneCelebration}
+                      className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold font-mono transition-all hover:scale-105 flex items-center gap-1.5 shadow-lg cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Celebrate Unlocked!
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {financialState.milestones.map((m: ZackMilestone) => (
+                      <div
+                        key={m.id}
+                        className={`p-3.5 rounded-xl border transition-all ${
+                          m.isUnlocked
+                            ? 'bg-slate-950/80 border-amber-500/40 shadow-sm shadow-amber-500/5'
+                            : 'bg-slate-950/40 border-slate-800/80 opacity-75'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-xl filter drop-shadow-sm">{m.icon}</span>
+                            <div>
+                              <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                                {m.title}
+                                {m.isUnlocked && (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 inline" />
+                                )}
+                              </h4>
+                              <p className="text-[11px] text-slate-400 line-clamp-1">
+                                {m.description}
+                              </p>
+                            </div>
+                          </div>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold whitespace-nowrap ${
+                              m.isUnlocked
+                                ? 'bg-emerald-500/20 text-emerald-300'
+                                : 'bg-slate-800 text-slate-400'
+                            }`}
+                          >
+                            {m.progressPercent}%
+                          </span>
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div className="mt-2.5 w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                          <div
+                            style={{ width: `${m.progressPercent}%` }}
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              m.isUnlocked ? 'bg-amber-400' : 'bg-slate-600'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-6 py-3.5 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
+                  <span>🐾 Zack continuously monitors local SQLite & storage metrics</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMilestoneHubOpen(false)}
+                  className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </>
   );
 };
