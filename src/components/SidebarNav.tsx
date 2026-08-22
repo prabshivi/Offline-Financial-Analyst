@@ -9,7 +9,8 @@ import {
   Target,
   Sparkles,
   Lock,
-  ChevronRight
+  ChevronRight,
+  Bot
 } from 'lucide-react';
 import { VaultHealth } from '../types';
 
@@ -50,6 +51,13 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       icon: UploadCloud, 
       badge: 'Smart Parser',
       description: 'CSV, PDF & Bank cards' 
+    },
+    { 
+      id: 'auto-fetch', 
+      label: 'PDF Automation', 
+      icon: Bot, 
+      badge: 'Auto-Sync',
+      description: 'Dropzone, scripts & cron' 
     },
     { 
       id: 'ledger', 

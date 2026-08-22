@@ -4,6 +4,39 @@ import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { vaultDb, TransactionRecord } from './src/server/database';
 import { GoogleGenAI } from '@google/genai';
+import { scrubPII } from './src/utils/security';
+
+// Dropzone directories for automated statement ingestion
+const DROPZONE_DIR = path.join(process.cwd(), 'data', 'dropzone');
+const PROCESSED_DIR = path.join(DROPZONE_DIR, 'processed');
+
+interface AutoFetchLogEntry {
+  id: string;
+  timestamp: string;
+  fileName: string;
+  institution: string;
+  fileSizeBytes: number;
+  transactionsExtracted: number;
+  transactionsInserted: number;
+  duplicatesSkipped: number;
+  status: 'success' | 'failed' | 'processing';
+  message: string;
+}
+
+let autoFetchLogs: AutoFetchLogEntry[] = [];
+let autoScanEnabled = true;
+let scanIntervalMinutes = 30;
+let webhookSecretToken = 'vault-auto-sync-key-8891';
+let lastScanTimestamp = new Date().toISOString();
+
+function ensureDropzoneDirs() {
+  if (!fs.existsSync(DROPZONE_DIR)) {
+    fs.mkdirSync(DROPZONE_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(PROCESSED_DIR)) {
+    fs.mkdirSync(PROCESSED_DIR, { recursive: true });
+  }
+}
 
 async function startServer() {
   const app = express();
@@ -111,6 +144,485 @@ Return a JSON array only.`;
       }
 
       res.json({ success: true, method: 'raw_text_ready', textToParse });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  ensureDropzoneDirs();
+
+  // Helper to parse any file buffer into transactions
+  async function parseStatementBuffer(
+    buffer: Buffer,
+    fileName: string,
+    institutionGuess?: string
+  ): Promise<{ transactions: Partial<TransactionRecord>[]; method: string }> {
+    const ext = path.extname(fileName).toLowerCase();
+    const isPdf = ext === '.pdf';
+    const isImage = ['.png', '.jpg', '.jpeg', '.webp'].includes(ext);
+    const isCsv = ext === '.csv' || ext === '.tsv';
+    const isOfx = ext === '.ofx' || ext === '.qfx';
+    const isJson = ext === '.json';
+
+    let institution = institutionGuess || 'Auto-Ingested Statement';
+    if (fileName.toLowerCase().includes('rbc')) institution = 'RBC Royal Bank';
+    else if (fileName.toLowerCase().includes('td')) institution = 'TD Canada Trust';
+    else if (fileName.toLowerCase().includes('scotia')) institution = 'Scotiabank';
+    else if (fileName.toLowerCase().includes('bmo')) institution = 'BMO Bank of Montreal';
+    else if (fileName.toLowerCase().includes('cibc')) institution = 'CIBC';
+    else if (fileName.toLowerCase().includes('chase')) institution = 'Chase';
+    else if (fileName.toLowerCase().includes('amex')) institution = 'American Express';
+    else if (fileName.toLowerCase().includes('apple')) institution = 'Apple Card';
+
+    // 1. JSON format
+    if (isJson) {
+      try {
+        const text = buffer.toString('utf-8');
+        const parsed = JSON.parse(text);
+        const list = Array.isArray(parsed) ? parsed : (parsed.transactions || []);
+        const sanitized = list.map((t: any) => ({
+          date: t.date || new Date().toISOString().split('T')[0],
+          institution: t.institution || institution,
+          account_name: t.account_name || `${institution} Automated Account`,
+          raw_description: scrubPII(t.raw_description || t.description || 'Automated Transaction'),
+          clean_merchant: scrubPII(t.clean_merchant || vaultDb.guessMerchant(t.raw_description || t.description || '')),
+          category: t.category || vaultDb.categorize(t.raw_description || t.description || ''),
+          amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0,
+          type: t.type || ((Number(t.amount) || 0) >= 0 ? 'inflow' : 'outflow')
+        }));
+        return { transactions: sanitized, method: 'json_parser' };
+      } catch (e) {
+        console.warn('Failed to parse JSON file:', e);
+      }
+    }
+
+    // 2. PDF or Image with Gemini Multimodal AI (if API key is set)
+    if ((isPdf || isImage) && process.env.GEMINI_API_KEY) {
+      try {
+        const ai = new GoogleGenAI({
+          apiKey: process.env.GEMINI_API_KEY,
+          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+        });
+        const mimeType = isPdf ? 'application/pdf' : (ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/png');
+        const base64Data = buffer.toString('base64');
+
+        const prompt = `Extract all transaction rows from this bank statement or document into a clean JSON array.
+For each transaction:
+- "date": string in YYYY-MM-DD format (use year 2026 if year is not stated)
+- "raw_description": exact memo or description
+- "clean_merchant": normalized merchant name (e.g. "Whole Foods", "Starbucks", "Uber", "Hydro", "Payroll")
+- "category": one of [Income, Groceries, Dining Out, Coffee & Drinks, Shopping, Transportation, Gas & Fuel, Entertainment & Subscriptions, Utilities & Bills, Rent & Housing, Health & Pharmacy, Fitness & Wellness, Travel & Lodging, Investments, Education, Miscellaneous]
+- "amount": number (negative for expenses like -35.20, positive for income/deposits like 2400.00)
+- "type": "outflow" or "inflow"
+
+Return a JSON array only.`;
+
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.7-flash',
+          contents: {
+            parts: [
+              { inlineData: { mimeType, data: base64Data } },
+              { text: prompt }
+            ]
+          },
+          config: { responseMimeType: 'application/json' }
+        });
+
+        const rawJson = response.text;
+        if (rawJson) {
+          const parsed = JSON.parse(rawJson);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const sanitized = parsed.map((t: any) => {
+              const rawDesc = scrubPII(t.raw_description || t.description || 'Bank Statement Row');
+              const cleanM = t.clean_merchant ? scrubPII(t.clean_merchant) : vaultDb.guessMerchant(rawDesc);
+              return {
+                date: t.date || new Date().toISOString().split('T')[0],
+                institution: institution,
+                account_name: `${institution} e-Statement`,
+                raw_description: rawDesc,
+                clean_merchant: cleanM,
+                category: t.category || vaultDb.categorize(rawDesc),
+                amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0,
+                type: t.type || ((Number(t.amount) || 0) >= 0 ? 'inflow' : 'outflow')
+              };
+            });
+            return { transactions: sanitized, method: 'gemini_multimodal_pdf' };
+          }
+        }
+      } catch (err: any) {
+        console.warn('Gemini statement PDF parsing fallback:', err.message);
+      }
+    }
+
+    // 3. Text / CSV / OFX / Raw regex extraction
+    const rawText = buffer.toString('utf-8');
+    const printable = rawText.replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+    const lines = printable.split(/\r?\n/);
+    const extracted: Partial<TransactionRecord>[] = [];
+
+    // Regex for date + description + amount line
+    // E.g. "2026-08-01 WHOLE FOODS -45.20" or "08/14/2026 STARBUCKS $6.50"
+    const lineRegex = /(?:(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})|(\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}))\s+([A-Za-z0-9\s*#&._\-'/,]{3,50})\s+([+-]?\$?\s*\d{1,6}(?:[.,]\d{2})?)/i;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.toLowerCase().startsWith('date')) continue;
+
+      // CSV line splitting fallback
+      if (isCsv && trimmed.includes(',')) {
+        const parts = trimmed.split(',').map(p => p.replace(/^["']|["']$/g, '').trim());
+        if (parts.length >= 3) {
+          const datePart = parts[0] || parts[1];
+          const descPart = parts[1] || parts[2];
+          const amtPart = parts[2] || parts[3] || parts[parts.length - 1];
+          const parsedAmt = parseFloat(amtPart.replace(/[^0-9.-]/g, ''));
+          if (!isNaN(parsedAmt) && descPart && descPart.length > 1) {
+            const rawDesc = scrubPII(descPart);
+            extracted.push({
+              date: datePart.includes('-') ? datePart : new Date().toISOString().split('T')[0],
+              institution,
+              account_name: `${institution} Account`,
+              raw_description: rawDesc,
+              clean_merchant: scrubPII(vaultDb.guessMerchant(rawDesc)),
+              category: vaultDb.categorize(rawDesc),
+              amount: parsedAmt,
+              type: parsedAmt >= 0 ? 'inflow' : 'outflow'
+            });
+            continue;
+          }
+        }
+      }
+
+      // Regex matching on plain text / converted PDF lines
+      const match = trimmed.match(lineRegex);
+      if (match) {
+        const dateStr = match[1] || match[2];
+        const descStr = match[3].trim();
+        const amtStr = match[4].replace(/[\$,\s]/g, '');
+        const numAmt = parseFloat(amtStr);
+
+        if (!isNaN(numAmt) && descStr.length > 2 && !descStr.toUpperCase().includes('BALANCE')) {
+          const rawDesc = scrubPII(descStr);
+          extracted.push({
+            date: dateStr || new Date().toISOString().split('T')[0],
+            institution,
+            account_name: `${institution} Account`,
+            raw_description: rawDesc,
+            clean_merchant: scrubPII(vaultDb.guessMerchant(rawDesc)),
+            category: vaultDb.categorize(rawDesc),
+            amount: numAmt,
+            type: numAmt >= 0 ? 'inflow' : 'outflow'
+          });
+        }
+      }
+    }
+
+    return { transactions: extracted, method: isCsv ? 'csv_parser' : 'text_heuristic_parser' };
+  }
+
+  // Auto-scan dropzone runner
+  async function runDropzoneScan(): Promise<{
+    filesScanned: number;
+    totalExtracted: number;
+    totalInserted: number;
+    duplicates: number;
+    results: any[];
+  }> {
+    ensureDropzoneDirs();
+    lastScanTimestamp = new Date().toISOString();
+
+    const files = fs.readdirSync(DROPZONE_DIR).filter(f => {
+      const fullPath = path.join(DROPZONE_DIR, f);
+      return fs.statSync(fullPath).isFile() && !f.startsWith('.');
+    });
+
+    let filesScanned = 0;
+    let totalExtracted = 0;
+    let totalInserted = 0;
+    let totalDuplicates = 0;
+    const results: any[] = [];
+
+    for (const fileName of files) {
+      const filePath = path.join(DROPZONE_DIR, fileName);
+      try {
+        filesScanned++;
+        const fileBuffer = fs.readFileSync(filePath);
+        const stats = fs.statSync(filePath);
+
+        const { transactions, method } = await parseStatementBuffer(fileBuffer, fileName);
+        totalExtracted += transactions.length;
+
+        let saveResult = { inserted: 0, duplicates: 0, total: 0 };
+        if (transactions.length > 0) {
+          saveResult = vaultDb.saveTransactions(transactions);
+          totalInserted += saveResult.inserted;
+          totalDuplicates += saveResult.duplicates;
+        }
+
+        // Move to processed folder with timestamp prefix
+        const processedName = `${Date.now()}_${fileName}`;
+        const processedPath = path.join(PROCESSED_DIR, processedName);
+        fs.renameSync(filePath, processedPath);
+
+        const logEntry: AutoFetchLogEntry = {
+          id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          timestamp: new Date().toISOString(),
+          fileName,
+          institution: transactions[0]?.institution || 'Automated Document',
+          fileSizeBytes: stats.size,
+          transactionsExtracted: transactions.length,
+          transactionsInserted: saveResult.inserted,
+          duplicatesSkipped: saveResult.duplicates,
+          status: 'success',
+          message: `Parsed ${transactions.length} rows via ${method} (${saveResult.inserted} inserted, ${saveResult.duplicates} duplicates skipped)`
+        };
+
+        autoFetchLogs.unshift(logEntry);
+        if (autoFetchLogs.length > 50) autoFetchLogs.pop();
+
+        results.push({
+          fileName,
+          extracted: transactions.length,
+          inserted: saveResult.inserted,
+          duplicates: saveResult.duplicates,
+          method
+        });
+      } catch (err: any) {
+        console.error(`Error processing dropzone file ${fileName}:`, err);
+        const logEntry: AutoFetchLogEntry = {
+          id: `log-err-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          fileName,
+          institution: 'Unknown',
+          fileSizeBytes: 0,
+          transactionsExtracted: 0,
+          transactionsInserted: 0,
+          duplicatesSkipped: 0,
+          status: 'failed',
+          message: `Processing failed: ${err.message}`
+        };
+        autoFetchLogs.unshift(logEntry);
+      }
+    }
+
+    return {
+      filesScanned,
+      totalExtracted,
+      totalInserted,
+      duplicates: totalDuplicates,
+      results
+    };
+  }
+
+  // Periodic Auto-Scanner background daemon
+  setInterval(async () => {
+    if (autoScanEnabled) {
+      try {
+        await runDropzoneScan();
+      } catch (e) {
+        console.error('Background dropzone scan error:', e);
+      }
+    }
+  }, scanIntervalMinutes * 60 * 1000);
+
+  // --- Auto-Fetch & Automation API Endpoints ---
+
+  // Get Auto-Fetch Status & Dropzone Metrics
+  app.get('/api/auto-fetch/status', (req, res) => {
+    try {
+      ensureDropzoneDirs();
+      const pendingFiles = fs.readdirSync(DROPZONE_DIR).filter(f => {
+        const fullPath = path.join(DROPZONE_DIR, f);
+        return fs.statSync(fullPath).isFile() && !f.startsWith('.');
+      });
+      const processedFiles = fs.readdirSync(PROCESSED_DIR).filter(f => !f.startsWith('.'));
+      
+      const totalAutoTx = autoFetchLogs.reduce((acc, log) => acc + log.transactionsInserted, 0);
+
+      res.json({
+        enabled: autoScanEnabled,
+        dropzonePath: 'data/dropzone',
+        pendingFilesCount: pendingFiles.length,
+        pendingFiles,
+        processedFilesCount: processedFiles.length,
+        webhookUrl: '/api/auto-fetch/webhook',
+        webhookToken: webhookSecretToken,
+        lastScanTime: lastScanTimestamp,
+        scanIntervalMinutes: scanIntervalMinutes,
+        totalAutomatedTransactions: totalAutoTx,
+        logs: autoFetchLogs
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Trigger immediate Dropzone Scan
+  app.post('/api/auto-fetch/scan', async (req, res) => {
+    try {
+      const scanResults = await runDropzoneScan();
+      res.json({ success: true, ...scanResults });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Webhook endpoint for automated scripts (Playwright, Python, cURL, Email Forwarder)
+  app.post('/api/auto-fetch/webhook', async (req, res) => {
+    try {
+      const authHeader = req.headers['x-vault-token'] || req.headers['authorization'];
+      const queryToken = req.query.token as string;
+      const providedToken = (authHeader ? String(authHeader).replace(/^Bearer\s+/i, '') : queryToken);
+
+      // Verify token
+      if (providedToken !== webhookSecretToken) {
+        res.status(401).json({ error: 'Unauthorized: Invalid or missing webhook token' });
+        return;
+      }
+
+      const { fileName = `webhook_import_${Date.now()}.pdf`, base64Data, textContent, institution, transactions } = req.body;
+
+      if (Array.isArray(transactions) && transactions.length > 0) {
+        // Direct transactions JSON payload
+        const sanitized = transactions.map((t: any) => ({
+          ...t,
+          raw_description: scrubPII(t.raw_description || t.description || 'Webhook Transaction'),
+          clean_merchant: scrubPII(t.clean_merchant || vaultDb.guessMerchant(t.raw_description || ''))
+        }));
+        const saveResult = vaultDb.saveTransactions(sanitized);
+
+        const logEntry: AutoFetchLogEntry = {
+          id: `log-webhook-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          fileName,
+          institution: institution || 'Webhook API Client',
+          fileSizeBytes: JSON.stringify(transactions).length,
+          transactionsExtracted: transactions.length,
+          transactionsInserted: saveResult.inserted,
+          duplicatesSkipped: saveResult.duplicates,
+          status: 'success',
+          message: `Direct JSON ingestion received ${transactions.length} rows (${saveResult.inserted} inserted)`
+        };
+        autoFetchLogs.unshift(logEntry);
+
+        res.json({ success: true, ...saveResult });
+        return;
+      }
+
+      let buffer: Buffer;
+      if (base64Data) {
+        buffer = Buffer.from(base64Data, 'base64');
+      } else if (textContent) {
+        buffer = Buffer.from(textContent, 'utf-8');
+      } else {
+        res.status(400).json({ error: 'Missing base64Data, textContent, or transactions array in webhook body' });
+        return;
+      }
+
+      const parsed = await parseStatementBuffer(buffer, fileName, institution);
+      let saveResult = { inserted: 0, duplicates: 0, total: 0 };
+      if (parsed.transactions.length > 0) {
+        saveResult = vaultDb.saveTransactions(parsed.transactions);
+      }
+
+      const logEntry: AutoFetchLogEntry = {
+        id: `log-webhook-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        fileName,
+        institution: institution || parsed.transactions[0]?.institution || 'Webhook Document',
+        fileSizeBytes: buffer.length,
+        transactionsExtracted: parsed.transactions.length,
+        transactionsInserted: saveResult.inserted,
+        duplicatesSkipped: saveResult.duplicates,
+        status: 'success',
+        message: `Webhook received ${fileName} via ${parsed.method} (${saveResult.inserted} inserted, ${saveResult.duplicates} duplicates skipped)`
+      };
+      autoFetchLogs.unshift(logEntry);
+
+      res.json({
+        success: true,
+        method: parsed.method,
+        extracted: parsed.transactions.length,
+        inserted: saveResult.inserted,
+        duplicates: saveResult.duplicates
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Simulate an automated bank statement drop into the dropzone
+  app.post('/api/auto-fetch/simulate-drop', async (req, res) => {
+    try {
+      ensureDropzoneDirs();
+      const { institution = 'RBC Royal Bank' } = req.body;
+
+      const randomBatchId = Math.floor(1000 + Math.random() * 9000);
+      const fileName = `${institution.replace(/\s+/g, '_')}_Monthly_Statement_Batch_${randomBatchId}.csv`;
+      const filePath = path.join(DROPZONE_DIR, fileName);
+
+      let sampleContent = '';
+      if (institution.includes('RBC')) {
+        sampleContent = `Account Type,Account Number,Transaction Date,Cheque Number,Description 1,Description 2,CAD$,USD$
+Chequing,00192-991203,08/18/2026,,WHOLE FOODS TORONTO ON,CARD 4532 9918 2011,-88.45,
+Chequing,00192-991203,08/19/2026,,TIM HORTONS #4928 OTTAWA ON,DEBIT CARD,-5.75,
+Chequing,00192-991203,08/20/2026,,PAYROLL DIRECT DEPOSIT ACME CORP,TRANSIT 01928,3450.00,
+Chequing,00192-991203,08/21/2026,,HYDRO ONE UTILITIES BILL,E-PAYMENT,-124.30,
+Chequing,00192-991203,08/22/2026,,TTC METROPASS TRANSIT TORONTO,POS DEBIT,-156.00,`;
+      } else if (institution.includes('TD')) {
+        sampleContent = `Date,Transaction Description,Debit,Credit,Balance
+2026-08-16,LOBLAWS SUPERMARKET #102,-112.50,,4820.10
+2026-08-17,STARBUCKS COFFEE VANCOUVER,-6.80,,4813.30
+2026-08-18,UBER TRIP VANCOUVER BC,-24.15,,4789.15
+2026-08-19,EMPLOYER PAYROLL DIRECT DEP,,3100.00,7889.15
+2026-08-20,NETFLIX.COM SUBSCRIPTION,-22.99,,7866.16`;
+      } else {
+        sampleContent = `Transaction Date,Post Date,Description,Category,Type,Amount,Memo
+08/15/2026,08/16/2026,TRADER JOE'S #491,Groceries,Sale,-74.20,CARD 4532-8819-2049-1123
+08/17/2026,08/18/2026,CHEVRON GAS STATION,Gas,Sale,-52.10,SAN FRANCISCO CA
+08/19/2026,08/20/2026,SWEETGREEN MISSION,Dining,Sale,-17.85,LUNCH ORDER
+08/20/2026,08/21/2026,TECH CORP PAYROLL,Income,Credit,4850.00,DIRECT DEPOSIT ACCT #992-102
+08/21/2026,08/22/2026,EQUINOX FITNESS SF,Fitness,Sale,-280.00,MONTHLY MEMBERSHIP`;
+      }
+
+      fs.writeFileSync(filePath, sampleContent, 'utf-8');
+
+      // Now run the scan immediately
+      const scanResults = await runDropzoneScan();
+
+      res.json({
+        success: true,
+        simulatedFile: fileName,
+        institution,
+        ...scanResults
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Update Auto-Fetch Configuration
+  app.post('/api/auto-fetch/config', (req, res) => {
+    try {
+      const { enabled, scanIntervalMinutes: interval } = req.body;
+      if (typeof enabled === 'boolean') autoScanEnabled = enabled;
+      if (typeof interval === 'number' && interval >= 1) scanIntervalMinutes = interval;
+
+      res.json({
+        success: true,
+        enabled: autoScanEnabled,
+        scanIntervalMinutes
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Clear Auto-Fetch Logs
+  app.post('/api/auto-fetch/clear-logs', (req, res) => {
+    try {
+      autoFetchLogs = [];
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

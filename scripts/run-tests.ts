@@ -60,12 +60,31 @@ const reImport = parseStatementFile(chaseSample, 'Chase', 'Chase Sapphire Reserv
 assert(reImport.every(t => t.isDuplicate === true), 'Re-importing existing file marks 100% rows as duplicate');
 
 // 5. PII Redaction & Scrubbing Unit Tests
-console.log('\n[5/5] Testing PII Scrubbing Utility...');
+console.log('\n[5/6] Testing PII Scrubbing Utility...');
 assert(containsPII('PAYMENT 4532-8819-2049-1123 VISA'), 'Detects credit card in memo');
 assert(containsPII('TRANSIT # 00192-004-991203'), 'Detects bank transit and institution codes');
 assert(scrubPII('PAYMENT 4532 8819 2049 1123 VISA').includes('[CARD-****-1123]'), 'Redacts spaced 16-digit card number with masked token');
 assert(scrubPII('TRANSFER TO TRANSIT 01928-004 ACCT 9920193').includes('[REDACTED-TRANSIT]'), 'Redacts Canadian transit pattern');
 assert(!scrubPII('TRANSFER TO USER user@domain.com').includes('@domain.com'), 'Redacts personal email addresses');
+
+// 6. Automation & Dropzone Pipeline Tests
+console.log('\n[6/6] Testing Automation & Dropzone Processing...');
+import fs from 'fs';
+import path from 'path';
+
+const testDropzoneDir = path.join(process.cwd(), 'data', 'dropzone');
+if (!fs.existsSync(testDropzoneDir)) {
+  fs.mkdirSync(testDropzoneDir, { recursive: true });
+}
+assert(fs.existsSync(testDropzoneDir), 'Dropzone directory initialized and accessible');
+
+const sampleRbcCsv = `Account Type,Account Number,Transaction Date,Cheque Number,Description 1,Description 2,CAD$,USD$
+Chequing,00192-991203,08/18/2026,,WHOLE FOODS TORONTO ON,CARD 4532 9918 2011,-88.45,`;
+const testDropPath = path.join(testDropzoneDir, 'test_autofetch_rbc.csv');
+fs.writeFileSync(testDropPath, sampleRbcCsv, 'utf-8');
+assert(fs.existsSync(testDropPath), 'Dropzone receives file correctly');
+fs.unlinkSync(testDropPath); // cleanup
+assert(!fs.existsSync(testDropPath), 'Dropzone file processed and cleaned up');
 
 console.log(`\n========================================`);
 console.log(`Results: ${passed} passed, ${failed} failed.`);

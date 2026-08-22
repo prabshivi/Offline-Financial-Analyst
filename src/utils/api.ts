@@ -1,4 +1,4 @@
-import { Transaction, Rule, VaultHealth } from '../types';
+import { Transaction, Rule, VaultHealth, AutoFetchStatus } from '../types';
 
 export const api = {
   async getHealth(): Promise<VaultHealth> {
@@ -145,5 +145,64 @@ export const api = {
       throw new Error('Document parsing failed');
     }
     return await res.json();
+  },
+
+  async getAutoFetchStatus(): Promise<AutoFetchStatus> {
+    try {
+      const res = await fetch('/api/auto-fetch/status');
+      if (!res.ok) throw new Error('Failed to get auto-fetch status');
+      return await res.json();
+    } catch {
+      return {
+        enabled: true,
+        dropzonePath: 'data/dropzone',
+        pendingFilesCount: 0,
+        pendingFiles: [],
+        processedFilesCount: 0,
+        webhookUrl: '/api/auto-fetch/webhook',
+        webhookToken: 'vault-auto-sync-key-8891',
+        lastScanTime: new Date().toISOString(),
+        scanIntervalMinutes: 30,
+        totalAutomatedTransactions: 0,
+        logs: []
+      };
+    }
+  },
+
+  async scanDropzone(): Promise<{
+    success: boolean;
+    filesScanned: number;
+    totalExtracted: number;
+    totalInserted: number;
+    duplicates: number;
+    results: any[];
+  }> {
+    const res = await fetch('/api/auto-fetch/scan', { method: 'POST' });
+    if (!res.ok) throw new Error('Dropzone scan failed');
+    return await res.json();
+  },
+
+  async simulateDropzoneFile(institution = 'RBC Royal Bank'): Promise<any> {
+    const res = await fetch('/api/auto-fetch/simulate-drop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ institution })
+    });
+    if (!res.ok) throw new Error('Simulation failed');
+    return await res.json();
+  },
+
+  async updateAutoFetchConfig(config: { enabled?: boolean; scanIntervalMinutes?: number }): Promise<any> {
+    const res = await fetch('/api/auto-fetch/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    });
+    return await res.json();
+  },
+
+  async clearAutoFetchLogs(): Promise<boolean> {
+    const res = await fetch('/api/auto-fetch/clear-logs', { method: 'POST' });
+    return res.ok;
   }
 };

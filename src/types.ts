@@ -77,3 +77,30 @@ export interface BudgetLimit {
   category: string;
   monthlyLimit: number;
 }
+
+export interface AutoFetchLog {
+  id: string;
+  timestamp: string;
+  fileName: string;
+  institution: string;
+  fileSizeBytes: number;
+  transactionsExtracted: number;
+  transactionsInserted: number;
+  duplicatesSkipped: number;
+  status: 'success' | 'failed' | 'processing';
+  message: string;
+}
+
+export interface AutoFetchStatus {
+  enabled: boolean;
+  dropzonePath: string;
+  pendingFilesCount: number;
+  pendingFiles: string[];
+  processedFilesCount: number;
+  webhookUrl: string;
+  webhookToken: string;
+  lastScanTime: string;
+  scanIntervalMinutes: number;
+  totalAutomatedTransactions: number;
+  logs: AutoFetchLog[];
+}
