@@ -1,0 +1,13 @@
+[
+  "tests/test_parser_reconciliation.py::test_balance_reconciliation_math",
+  "tests/test_parser_reconciliation.py::test_chronological_gap_detection",
+  "tests/test_parser_reconciliation.py::test_csv_parser_and_deduplication",
+  "tests/test_security.py::test_key_derivation_entropy",
+  "tests/test_security.py::test_magic_byte_validation",
+  "tests/test_security.py::test_pii_sanitization_pan",
+  "tests/test_security.py::test_pii_sanitization_sin",
+  "tests/test_security.py::test_pii_sanitization_transit_and_institution",
+  "tests/test_security.py::test_zero_outbound_network",
+  "tests/test_vault_isolation.py::test_multi_user_vault_isolation",
+  "tests/test_vault_isolation.py::test_session_purge"
+]

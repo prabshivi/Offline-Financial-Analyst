@@ -1,0 +1,6 @@
+{
+  "name": "Local Finance Vault",
+  "description": "Production-grade, local-first Canadian personal finance and zero-knowledge vault platform with AES-256 SQLCipher encryption, multi-bank statement ingestion, mortgage amortization suite, and PIPEDA/OSFI B-13 compliance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

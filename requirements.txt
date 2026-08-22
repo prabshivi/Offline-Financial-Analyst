@@ -1,0 +1,12 @@
+streamlit==1.32.0
+pandas==2.2.1
+plotly==5.19.0
+pdfplumber==0.10.4
+argon2-cffi==23.1.0
+cryptography==42.0.5
+openpyxl==3.1.2
+pytest==8.1.1
+pytest-cov==4.1.0
+bandit==1.7.8
+pip-audit==2.7.2
+sqlcipher3-binary>=0.5.2; sys_platform != "win32"
