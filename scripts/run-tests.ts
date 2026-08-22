@@ -68,7 +68,7 @@ assert(scrubPII('TRANSFER TO TRANSIT 01928-004 ACCT 9920193').includes('[REDACTE
 assert(!scrubPII('TRANSFER TO USER user@domain.com').includes('@domain.com'), 'Redacts personal email addresses');
 
 // 6. Automation & Dropzone Pipeline Tests
-console.log('\n[6/6] Testing Automation & Dropzone Processing...');
+console.log('\n[6/7] Testing Automation & Dropzone Processing...');
 import fs from 'fs';
 import path from 'path';
 
@@ -85,6 +85,24 @@ fs.writeFileSync(testDropPath, sampleRbcCsv, 'utf-8');
 assert(fs.existsSync(testDropPath), 'Dropzone receives file correctly');
 fs.unlinkSync(testDropPath); // cleanup
 assert(!fs.existsSync(testDropPath), 'Dropzone file processed and cleaned up');
+
+// 7. Debt Payoff & Mortgage Suite Calculations
+console.log('\n[7/7] Testing Debt Payoff & Mortgage Suite Algorithms...');
+import { calculateDebtPayoffPlan, getComparativeDebtPayoffPlans, calculateMortgageDeepDive, DEFAULT_DEBT_PORTFOLIO } from '../src/utils/debtCalculator';
+
+const baseline = calculateDebtPayoffPlan(DEFAULT_DEBT_PORTFOLIO, 'baseline', 0);
+const snowball = calculateDebtPayoffPlan(DEFAULT_DEBT_PORTFOLIO, 'snowball', 350);
+const avalanche = calculateDebtPayoffPlan(DEFAULT_DEBT_PORTFOLIO, 'avalanche', 350);
+
+assert(snowball.monthsToPayoff < baseline.monthsToPayoff, 'Snowball with accelerator pays off debts faster than baseline minimums');
+assert(avalanche.totalInterestPaid <= snowball.totalInterestPaid, 'Avalanche strategy achieves mathematically minimum total interest paid');
+assert(snowball.milestones.length === DEFAULT_DEBT_PORTFOLIO.length, 'All debt milestones are properly scheduled in payoff order');
+
+const mortgageTest = DEFAULT_DEBT_PORTFOLIO.find(d => d.type === 'mortgage')!;
+const mDeepDive = calculateMortgageDeepDive(mortgageTest, 200);
+assert(mDeepDive.biweeklyYearsSaved > 0, 'Bi-weekly mortgage schedule trims years off standard amortization');
+assert(mDeepDive.currentLTV > 0 && mDeepDive.currentLTV < 100, 'Calculates loan-to-value ratio accurately');
+
 
 console.log(`\n========================================`);
 console.log(`Results: ${passed} passed, ${failed} failed.`);

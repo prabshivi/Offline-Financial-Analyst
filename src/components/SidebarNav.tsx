@@ -10,7 +10,8 @@ import {
   Sparkles,
   Lock,
   ChevronRight,
-  Bot
+  Bot,
+  Calculator
 } from 'lucide-react';
 import { VaultHealth } from '../types';
 
@@ -44,6 +45,13 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       icon: Target, 
       badge: 'Interactive',
       description: 'Category spending targets' 
+    },
+    { 
+      id: 'debt-payoff', 
+      label: 'Debt Payoff Suite', 
+      icon: Calculator, 
+      badge: 'Snowball',
+      description: 'Mortgage, loans & avalanche' 
     },
     { 
       id: 'ingestion', 

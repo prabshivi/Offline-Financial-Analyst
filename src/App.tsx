@@ -9,6 +9,7 @@ import { RulesEngineView } from './components/RulesEngineView';
 import { SecurityVaultView } from './components/SecurityVaultView';
 import { NightlyRunsView } from './components/NightlyRunsView';
 import { AutoFetchView } from './components/AutoFetchView';
+import { DebtPayoffView } from './components/DebtPayoffView';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { TransactionDetailModal } from './components/TransactionDetailModal';
 import { VaultLockScreen } from './components/VaultLockScreen';
@@ -232,6 +233,13 @@ export default function App() {
                   isDarkMode={isDarkMode}
                   onNavigate={(tab) => setActiveTab(tab)}
                   onOpenDetailModal={(tx) => setAuditTransaction(tx)}
+                />
+              )}
+
+              {activeTab === 'debt-payoff' && (
+                <DebtPayoffView
+                  isDarkMode={isDarkMode}
+                  onNavigate={(tab) => setActiveTab(tab)}
                 />
               )}
 

@@ -104,3 +104,80 @@ export interface AutoFetchStatus {
   totalAutomatedTransactions: number;
   logs: AutoFetchLog[];
 }
+
+export type DebtType = 
+  | 'mortgage' 
+  | 'credit_card' 
+  | 'auto_loan' 
+  | 'student_loan' 
+  | 'personal_loan' 
+  | 'heloc' 
+  | 'medical' 
+  | 'other';
+
+export interface DebtItem {
+  id: string;
+  name: string;
+  type: DebtType;
+  institution: string;
+  balance: number;
+  interestRate: number; // APR % e.g. 6.5
+  minPayment: number;
+  propertyValue?: number; // Optional property value for mortgage LTV calculation
+  originationBalance?: number;
+  notes?: string;
+  color?: string;
+}
+
+export type RepaymentStrategy = 'snowball' | 'avalanche' | 'custom';
+
+export interface MonthlyDebtSnapshot {
+  debtId: string;
+  debtName: string;
+  startBalance: number;
+  interest: number;
+  principal: number;
+  payment: number;
+  endBalance: number;
+}
+
+export interface PayoffScheduleMonth {
+  monthIndex: number;
+  date: string;
+  year: number;
+  month: number;
+  totalRemainingBalance: number;
+  totalInterestPaidMonth: number;
+  cumulativeInterest: number;
+  cumulativePrincipal: number;
+  totalPaymentMonth: number;
+  debtBalances: Record<string, number>;
+  snapshots: MonthlyDebtSnapshot[];
+  paidOffThisMonth: string[];
+}
+
+export interface DebtPayoffMilestone {
+  debtId: string;
+  name: string;
+  type: DebtType;
+  initialBalance: number;
+  interestRate: number;
+  payoffMonth: number;
+  payoffDate: string;
+  totalInterestPaid: number;
+}
+
+export interface DebtPayoffPlanResult {
+  strategy: RepaymentStrategy | 'baseline';
+  monthsToPayoff: number;
+  debtFreeDate: string;
+  totalInterestPaid: number;
+  totalAmountPaid: number;
+  monthlyRequiredPayment: number;
+  extraMonthlyPayment: number;
+  interestSavedVsBaseline: number;
+  monthsSavedVsBaseline: number;
+  schedule: PayoffScheduleMonth[];
+  milestones: DebtPayoffMilestone[];
+}
+
