@@ -28,6 +28,7 @@ import {
 import { StagingTransaction, InstitutionType, Transaction } from '../types';
 import { parseStatementFile, generateSampleStatement } from '../utils/parser';
 import { STANDARD_CATEGORIES, cleanMerchantName, generateTransactionId } from '../utils/categorizer';
+import { scrubPII } from '../utils/security';
 import { api } from '../utils/api';
 
 interface IngestionViewProps {
@@ -130,15 +131,17 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
 
           if (response.transactions && response.transactions.length > 0) {
             const staged: StagingTransaction[] = response.transactions.map((t, idx) => {
-              const hashId = t.id || generateTransactionId(t.date || '', t.raw_description || '', t.amount || 0, institution);
+              const scrubbedRaw = scrubPII(t.raw_description || 'Document Transaction');
+              const scrubbedClean = t.clean_merchant ? scrubPII(t.clean_merchant) : cleanMerchantName(scrubbedRaw);
+              const hashId = t.id || generateTransactionId(t.date || '', scrubbedRaw, t.amount || 0, institution);
               return {
                 tempId: `staging-doc-${Date.now()}-${idx}`,
                 id: hashId,
                 date: t.date || new Date().toISOString().split('T')[0],
                 institution: t.institution || institution || 'Document Import',
                 account_name: t.account_name || accountName || `${institution} Account`,
-                raw_description: t.raw_description || 'Document Transaction',
-                clean_merchant: t.clean_merchant || cleanMerchantName(t.raw_description || ''),
+                raw_description: scrubbedRaw,
+                clean_merchant: scrubbedClean,
                 category: t.category || 'Miscellaneous',
                 amount: t.amount || 0,
                 type: t.type || ((t.amount || 0) >= 0 ? 'inflow' : 'outflow'),
@@ -260,7 +263,13 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
     setIsProcessing(true);
     setProcessingStatus('Securing and storing transactions into SQLite Vault...');
     try {
-      const result = await onCommitTransactions(stagingData);
+      // Defense-in-depth: Ensure all fields are scrubbed of any PII before committing to storage
+      const sanitizedStaging: StagingTransaction[] = stagingData.map((t) => ({
+        ...t,
+        raw_description: scrubPII(t.raw_description),
+        clean_merchant: scrubPII(t.clean_merchant)
+      }));
+      const result = await onCommitTransactions(sanitizedStaging);
       setCommitResult(result);
       setStagingData([]);
     } catch (err: any) {

@@ -70,6 +70,13 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       icon: ShieldCheck, 
       description: 'Export DB, lock PIN & health' 
     },
+    { 
+      id: 'nightly', 
+      label: 'Nightly Runs & Tests', 
+      icon: Sparkles, 
+      badge: 'All Pass',
+      description: 'Automated CI & regression suite' 
+    },
   ];
 
   return (

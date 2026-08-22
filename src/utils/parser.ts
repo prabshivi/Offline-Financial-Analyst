@@ -1,6 +1,7 @@
 import Papa from 'papaparse';
 import { StagingTransaction, InstitutionType } from '../types';
 import { categorizeTransaction, cleanMerchantName, generateTransactionId } from './categorizer';
+import { scrubPII } from './security';
 
 export function parseStatementFile(
   content: string,
@@ -57,11 +58,12 @@ function parseJsonTransactions(
   items.forEach((item, i) => {
     const rawAmt = item.amount ?? item.Amount ?? item.total ?? 0;
     const numAmt = typeof rawAmt === 'number' ? rawAmt : parseFloat(String(rawAmt).replace(/[^0-9.-]/g, '')) || 0;
-    const rawDesc = item.description || item.raw_description || item.merchant || item.clean_merchant || item.name || item.memo || item.payee || 'Transaction';
+    const initialDesc = item.description || item.raw_description || item.merchant || item.clean_merchant || item.name || item.memo || item.payee || 'Transaction';
+    const rawDesc = scrubPII(initialDesc);
     const rawDate = item.date || item.Date || item.transaction_date || item.posted_date || new Date().toISOString().split('T')[0];
     const formattedDate = normalizeDate(rawDate);
     const category = item.category || categorizeTransaction(rawDesc);
-    const cleanMerchant = item.clean_merchant || cleanMerchantName(rawDesc);
+    const cleanMerchant = item.clean_merchant ? scrubPII(item.clean_merchant) : cleanMerchantName(rawDesc);
     const type: 'inflow' | 'outflow' = item.type || (numAmt >= 0 ? 'inflow' : 'outflow');
     const hashId = item.id || generateTransactionId(formattedDate, rawDesc, numAmt, institution);
     const isDuplicate = existingIds.has(hashId);
@@ -108,7 +110,8 @@ function parseOfxContent(
     const memoMatch = block.match(/<MEMO>([^\r\n<]+)/i);
 
     const rawAmt = trnAmtMatch ? parseFloat(trnAmtMatch[1].trim()) : 0;
-    const desc = (nameMatch ? nameMatch[1].trim() : '') + (memoMatch ? ` ${memoMatch[1].trim()}` : '') || 'OFX Transaction';
+    const initialDesc = (nameMatch ? nameMatch[1].trim() : '') + (memoMatch ? ` ${memoMatch[1].trim()}` : '') || 'OFX Transaction';
+    const desc = scrubPII(initialDesc);
     
     let formattedDate = new Date().toISOString().split('T')[0];
     if (dtPostedMatch) {
@@ -253,12 +256,14 @@ function parseCsvRows(
     if (!description && !date && amount === 0) continue;
     if (!description) description = 'Transaction';
 
+    // Scrub PII from description
+    const scrubbedDesc = scrubPII(description);
     const formattedDate = normalizeDate(date);
     if (!category) {
-      category = categorizeTransaction(description);
+      category = categorizeTransaction(scrubbedDesc);
     }
-    const cleanMerchant = cleanMerchantName(description);
-    const hashId = generateTransactionId(formattedDate, description, amount, institution);
+    const cleanMerchant = cleanMerchantName(scrubbedDesc);
+    const hashId = generateTransactionId(formattedDate, scrubbedDesc, amount, institution);
     const isDuplicate = existingIds.has(hashId);
 
     transactions.push({
@@ -267,7 +272,7 @@ function parseCsvRows(
       date: formattedDate,
       institution: institution || 'Universal CSV',
       account_name: accountName || `${institution} Account`,
-      raw_description: description || 'Unlabeled Transaction',
+      raw_description: scrubbedDesc,
       clean_merchant: cleanMerchant,
       category: category || 'Miscellaneous',
       amount,
@@ -324,6 +329,7 @@ function parseRawTextLines(
       desc = desc.replace(/^[-|:,\s]+/, '').replace(/[-|:,\s]+$/, '').trim();
 
       if (desc.length > 1 && !isNaN(parsedAmt) && parsedAmt !== 0) {
+        const scrubbedDesc = scrubPII(desc);
         const formattedDate = normalizeDate(rawDate);
         const amount = parsedAmt < 0 
           ? parsedAmt 
@@ -331,9 +337,9 @@ function parseRawTextLines(
               ? parsedAmt 
               : -parsedAmt);
 
-        const category = categorizeTransaction(desc);
-        const cleanMerchant = cleanMerchantName(desc);
-        const hashId = generateTransactionId(formattedDate, desc, amount, institution);
+        const category = categorizeTransaction(scrubbedDesc);
+        const cleanMerchant = cleanMerchantName(scrubbedDesc);
+        const hashId = generateTransactionId(formattedDate, scrubbedDesc, amount, institution);
         const isDuplicate = existingIds.has(hashId);
 
         transactions.push({
@@ -342,7 +348,7 @@ function parseRawTextLines(
           date: formattedDate,
           institution: institution || 'Text Statement',
           account_name: accountName || `${institution} Account`,
-          raw_description: desc,
+          raw_description: scrubbedDesc,
           clean_merchant: cleanMerchant,
           category,
           amount,

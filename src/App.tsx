@@ -7,6 +7,7 @@ import { IngestionView } from './components/IngestionView';
 import { MasterLedgerView } from './components/MasterLedgerView';
 import { RulesEngineView } from './components/RulesEngineView';
 import { SecurityVaultView } from './components/SecurityVaultView';
+import { NightlyRunsView } from './components/NightlyRunsView';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { TransactionDetailModal } from './components/TransactionDetailModal';
 import { VaultLockScreen } from './components/VaultLockScreen';
@@ -275,6 +276,13 @@ export default function App() {
                   onImportData={handleImportData}
                   onSeedSampleData={handleSeedSampleData}
                   isSeeding={isSeeding}
+                />
+              )}
+
+              {activeTab === 'nightly' && (
+                <NightlyRunsView
+                  isDarkMode={isDarkMode}
+                  onNavigate={(tab) => setActiveTab(tab)}
                 />
               )}
             </>
