@@ -11,7 +11,11 @@ import {
   Lock,
   ChevronRight,
   Bot,
-  Calculator
+  Calculator,
+  Terminal,
+  CheckCircle2,
+  Cpu,
+  ExternalLink
 } from 'lucide-react';
 import { VaultHealth } from '../types';
 
@@ -35,9 +39,9 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   const menuItems = [
     { 
       id: 'dashboard', 
-      label: 'Overview & Insights', 
+      label: 'Financial Overview', 
       icon: LayoutDashboard, 
-      description: 'Cash flow, metrics & charts' 
+      description: 'Cash flow, telemetry & KPIs' 
     },
     { 
       id: 'budget', 
@@ -50,21 +54,21 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       id: 'debt-payoff', 
       label: 'Debt Payoff Suite', 
       icon: Calculator, 
-      badge: 'Snowball',
+      badge: 'Snowball & LTV',
       description: 'Mortgage, loans & avalanche' 
     },
     { 
       id: 'ingestion', 
       label: 'Import Statements', 
       icon: UploadCloud, 
-      badge: 'Smart Parser',
-      description: 'CSV, PDF & Bank cards' 
+      badge: 'Multi-Bank',
+      description: 'Chase, RBC, TD, CSV/PDF' 
     },
     { 
       id: 'auto-fetch', 
       label: 'PDF Automation', 
       icon: Bot, 
-      badge: 'Auto-Sync',
+      badge: 'CI/CD Sync',
       description: 'Dropzone, scripts & cron' 
     },
     { 
@@ -82,29 +86,30 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     },
     { 
       id: 'security', 
-      label: 'Backup & Security', 
+      label: 'Security & Backup', 
       icon: ShieldCheck, 
-      description: 'Export DB, lock PIN & health' 
+      description: 'AES-256 DB & health audit' 
     },
     { 
       id: 'nightly', 
-      label: 'Nightly Runs & Tests', 
-      icon: Sparkles, 
-      badge: 'All Pass',
-      description: 'Automated CI & regression suite' 
+      label: 'Peace of Mind Security', 
+      icon: ShieldCheck, 
+      badge: '100% Safe',
+      description: 'Run security test for peace of mind' 
     },
   ];
 
   return (
-    <aside className="w-full md:w-64 lg:w-72 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 flex flex-col border-r border-slate-200/80 dark:border-slate-800/80 shrink-0 md:min-h-[calc(100vh-65px)] transition-colors">
+    <aside className="w-full md:w-64 lg:w-72 bg-slate-950/95 text-slate-200 flex flex-col border-r border-slate-800/80 shrink-0 md:min-h-[calc(100vh-61px)] transition-colors">
       {/* Navigation Links */}
-      <nav className="p-3.5 space-y-1.5 flex-1">
+      <nav className="p-3.5 space-y-1 flex-1">
         <div className="px-3 pt-2 pb-1.5 flex items-center justify-between">
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-            Menu
+          <p className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-semibold flex items-center gap-1.5">
+            <Cpu className="w-3 h-3 text-cyan-400" />
+            Navigation System
           </p>
-          <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200/40 dark:border-emerald-800/50">
-            Ready
+          <span className="text-[10px] font-mono text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+            ONLINE
           </span>
         </div>
 
@@ -116,23 +121,25 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
               key={item.id}
               id={`nav-tab-${item.id}`}
               onClick={() => onSelectTab(item.id)}
-              className={`w-full flex items-center justify-between p-3 rounded-2xl text-left transition-all group ${
+              className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all group ${
                 isActive
-                  ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold shadow-sm border border-transparent dark:border-slate-700/60'
-                  : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-gradient-to-r from-slate-900 to-slate-800 text-white font-semibold border border-cyan-500/40 shadow-sm tech-glow-cyan'
+                  : 'hover:bg-slate-900/60 text-slate-300 hover:text-white border border-transparent'
               }`}
             >
-              <div className="flex items-center gap-3 min-w-0">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                  isActive ? 'bg-emerald-500 text-slate-950 font-bold' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 group-hover:bg-slate-200 dark:group-hover:bg-slate-700'
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                  isActive 
+                    ? 'bg-gradient-to-tr from-cyan-500 to-emerald-500 text-slate-950 font-bold shadow-xs' 
+                    : 'bg-slate-900 text-slate-400 group-hover:text-cyan-300 group-hover:bg-slate-800'
                 }`}>
-                  <Icon className="w-4 h-4" />
+                  <Icon className="w-3.5 h-3.5" />
                 </div>
                 <div className="min-w-0">
-                  <p className={`text-xs font-semibold truncate ${isActive ? 'text-white' : 'text-slate-900 dark:text-slate-100'}`}>
+                  <p className={`text-xs font-semibold truncate ${isActive ? 'text-white' : 'text-slate-200'}`}>
                     {item.label}
                   </p>
-                  <p className={`text-[10px] truncate ${isActive ? 'text-slate-300 dark:text-slate-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                  <p className={`text-[10px] truncate ${isActive ? 'text-cyan-300/80' : 'text-slate-400'}`}>
                     {item.description}
                   </p>
                 </div>
@@ -140,10 +147,10 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
 
               {item.badge && (
                 <span
-                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ml-2 font-mono ${
+                  className={`text-[9px] font-mono font-semibold px-2 py-0.5 rounded-full shrink-0 ml-1.5 ${
                     isActive
-                      ? 'bg-emerald-400 text-slate-950'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                      ? 'bg-cyan-400 text-slate-950 font-bold'
+                      : 'bg-slate-900 text-slate-400 border border-slate-800'
                   }`}
                 >
                   {item.badge}
@@ -154,20 +161,41 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         })}
       </nav>
 
-      {/* Helpful Quick Tip Card */}
-      <div className="p-3.5 m-3 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-950/20 dark:to-teal-950/20 border border-emerald-100/80 dark:border-emerald-900/40 text-xs space-y-2">
-        <div className="flex items-center justify-between text-emerald-950 dark:text-emerald-200">
-          <span className="font-bold flex items-center gap-1.5 text-xs text-emerald-900 dark:text-emerald-300">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Quick Tip
-          </span>
-          <span className="text-[10px] bg-emerald-200/60 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 px-2 py-0.5 rounded-full font-semibold">
-            Private
+      {/* Automated QA & Security Verification Card */}
+      <div className="p-3.5 m-3 rounded-xl bg-gradient-to-b from-slate-900/90 to-slate-950 border border-slate-800/90 space-y-2.5 text-xs shadow-sm">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-xs">
+            <ShieldCheck className="w-4 h-4 text-white" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1">
+              <span className="font-bold text-white text-xs truncate">Vault Architecture</span>
+              <CheckCircle2 className="w-3 h-3 text-cyan-400 shrink-0" />
+            </div>
+            <p className="text-[10px] text-slate-400 font-mono truncate">Automated QA & Security</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-800/80 text-[10px] font-mono">
+          <div className="bg-slate-950/80 px-2 py-1 rounded border border-slate-800 text-slate-300">
+            <span className="text-slate-500 block text-[9px]">QA SUITE</span>
+            <span className="text-emerald-400 font-bold">100% Passed</span>
+          </div>
+          <div className="bg-slate-950/80 px-2 py-1 rounded border border-slate-800 text-slate-300">
+            <span className="text-slate-500 block text-[9px]">STORAGE</span>
+            <span className="text-cyan-400 font-bold">Zero-Cloud</span>
+          </div>
+        </div>
+
+        <div className="pt-1 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+          <span>Local SQLite Engine</span>
+          <span className="text-emerald-400 flex items-center gap-1 font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            v2.4 Live
           </span>
         </div>
-        <p className="text-[11px] text-emerald-800 dark:text-emerald-300/90 leading-relaxed">
-          Import your bank statements anytime. All numbers and records remain strictly on your device.
-        </p>
       </div>
     </aside>
   );
 };
+

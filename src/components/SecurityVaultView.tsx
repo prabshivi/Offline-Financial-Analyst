@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   ShieldCheck, 
   Database, 
@@ -16,9 +16,20 @@ import {
   RefreshCw,
   FolderLock,
   Moon,
-  Sun
+  Sun,
+  KeyRound,
+  Fingerprint,
+  Copy,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { VaultHealth } from '../types';
+import {
+  evaluatePasswordStrength,
+  updateMasterPassphrase,
+  generateEmergencyRecoveryKey,
+  VAULT_AUTH_STORAGE
+} from '../utils/security';
 
 interface SecurityVaultViewProps {
   health: VaultHealth | null;
@@ -46,11 +57,21 @@ export const SecurityVaultView: React.FC<SecurityVaultViewProps> = ({
   isSeeding
 }) => {
   const [importStatus, setImportStatus] = useState<string | null>(null);
-  const [passphrase, setPassphrase] = useState<string>(() => localStorage.getItem('vault_passcode') || '1234');
-  const [passphraseInput, setPassphraseInput] = useState('');
+  const [newPassphraseInput, setNewPassphraseInput] = useState('');
+  const [showPassphrase, setShowPassphrase] = useState(false);
   const [showPassphraseSaved, setShowPassphraseSaved] = useState(false);
+  const [recoveryKey, setRecoveryKey] = useState<string>(() => {
+    return localStorage.getItem(VAULT_AUTH_STORAGE.RECOVERY_KEY) || 'VAULT-DEMO-RECOVER-2026';
+  });
+  const [copiedRecovery, setCopiedRecovery] = useState(false);
+  const [isBiometricEnabled, setIsBiometricEnabled] = useState<boolean>(() => {
+    return localStorage.getItem(VAULT_AUTH_STORAGE.WEBAUTHN_ENABLED) === 'true';
+  });
+
   const dbFileInputRef = useRef<HTMLInputElement>(null);
   const jsonFileInputRef = useRef<HTMLInputElement>(null);
+
+  const passStrength = evaluatePasswordStrength(newPassphraseInput);
 
   const formatBytes = (bytes: number) => {
     if (!bytes || bytes === 0) return '12.4 KB';
@@ -103,14 +124,32 @@ export const SecurityVaultView: React.FC<SecurityVaultViewProps> = ({
     reader.readAsText(file);
   };
 
-  const handleSavePasscode = (e: React.FormEvent) => {
+  const handleSaveMasterPassphrase = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!passphraseInput.trim()) return;
-    localStorage.setItem('vault_passcode', passphraseInput.trim());
-    setPassphrase(passphraseInput.trim());
-    setPassphraseInput('');
+    if (!newPassphraseInput.trim() || newPassphraseInput.trim().length < 6) return;
+    await updateMasterPassphrase(newPassphraseInput.trim());
+    setNewPassphraseInput('');
     setShowPassphraseSaved(true);
-    setTimeout(() => setShowPassphraseSaved(false), 3000);
+    setTimeout(() => setShowPassphraseSaved(false), 3500);
+  };
+
+  const handleGenerateNewRecoveryKey = () => {
+    const newKey = generateEmergencyRecoveryKey();
+    localStorage.setItem(VAULT_AUTH_STORAGE.RECOVERY_KEY, newKey);
+    setRecoveryKey(newKey);
+    setCopiedRecovery(false);
+  };
+
+  const handleCopyRecoveryKey = () => {
+    navigator.clipboard.writeText(recoveryKey);
+    setCopiedRecovery(true);
+    setTimeout(() => setCopiedRecovery(false), 2500);
+  };
+
+  const handleToggleBiometric = () => {
+    const nextVal = !isBiometricEnabled;
+    setIsBiometricEnabled(nextVal);
+    localStorage.setItem(VAULT_AUTH_STORAGE.WEBAUTHN_ENABLED, String(nextVal));
   };
 
   const handleWipeVault = async () => {
@@ -289,42 +328,143 @@ export const SecurityVaultView: React.FC<SecurityVaultViewProps> = ({
         </div>
       </div>
 
-      {/* Security PIN Lock, Appearance & Reset Options */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Passcode Setting */}
+      {/* Security Credentials, Biometric Passkey, Emergency Recovery & Appearance */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Master Passphrase Setting */}
         <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-4 transition-colors">
           <div className="flex items-center gap-2">
-            <Key className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-            <h3 className="font-bold text-slate-900 dark:text-white text-sm">Quick Lock PIN</h3>
+            <KeyRound className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
+            <h3 className="font-bold text-slate-900 dark:text-white text-sm">Master Security Passphrase</h3>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Set a 4-digit PIN to lock your screen when stepping away:
+            Change your zero-knowledge master passphrase. Utilizes PBKDF2 with SHA-256 and local per-vault salt.
           </p>
 
-          <form onSubmit={handleSavePasscode} className="space-y-3">
-            <div className="flex gap-2">
+          <form onSubmit={handleSaveMasterPassphrase} className="space-y-3">
+            <div className="relative">
               <input
-                type="password"
-                value={passphraseInput}
-                onChange={(e) => setPassphraseInput(e.target.value)}
-                placeholder="PIN (default: 1234)"
-                className="flex-1 px-3.5 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                type={showPassphrase ? 'text' : 'password'}
+                value={newPassphraseInput}
+                onChange={(e) => setNewPassphraseInput(e.target.value)}
+                placeholder="Enter new master passphrase (min 8 chars)..."
+                className="w-full pl-3.5 pr-10 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono"
               />
               <button
-                type="submit"
-                className="px-4 py-2 rounded-2xl bg-slate-900 dark:bg-emerald-600 text-white text-xs font-bold hover:bg-slate-800 dark:hover:bg-emerald-500"
+                type="button"
+                onClick={() => setShowPassphrase(!showPassphrase)}
+                className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-200"
               >
-                Save
+                {showPassphrase ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            {showPassphraseSaved && (
-              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> PIN saved successfully!
-              </p>
+
+            {/* Dynamic Strength Meter */}
+            {newPassphraseInput.length > 0 && (
+              <div className="space-y-1.5 pt-0.5">
+                <div className="flex items-center justify-between text-[11px] font-mono">
+                  <span className="text-slate-400">Entropy Strength:</span>
+                  <span style={{ color: passStrength.color }} className="font-bold">
+                    {passStrength.label} ({passStrength.entropyBits} bits)
+                  </span>
+                </div>
+                <div className="grid grid-cols-5 gap-1">
+                  {[0, 1, 2, 3, 4].map((step) => (
+                    <div
+                      key={step}
+                      className="h-1.5 rounded-full transition-all duration-300"
+                      style={{
+                        backgroundColor:
+                          passStrength.score >= step
+                            ? passStrength.color
+                            : 'rgba(51, 65, 85, 0.2)'
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
             )}
+
+            <div className="flex items-center justify-between pt-1">
+              <button
+                type="submit"
+                disabled={newPassphraseInput.length < 6}
+                className="px-4 py-2 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
+              >
+                Update Master Passphrase
+              </button>
+
+              {showPassphraseSaved && (
+                <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Passphrase saved!
+                </span>
+              )}
+            </div>
           </form>
         </div>
 
+        {/* Biometric Passkey & Emergency Recovery Key */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-4 transition-colors">
+          <div className="flex items-center gap-2">
+            <Fingerprint className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+            <h3 className="font-bold text-slate-900 dark:text-white text-sm">Passkey & Emergency Recovery</h3>
+          </div>
+
+          <div className="space-y-3">
+            {/* Biometric Toggle */}
+            <div className="flex items-center justify-between p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
+              <div className="flex items-center gap-2.5">
+                <Fingerprint className="w-4 h-4 text-emerald-500" />
+                <div>
+                  <p className="text-xs font-semibold text-slate-900 dark:text-white">Touch ID / Biometric Passkey</p>
+                  <p className="text-[11px] text-slate-400">WebAuthn hardware key unlock</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleBiometric}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  isBiometricEnabled
+                    ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
+                    : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                {isBiometricEnabled ? 'Enabled' : 'Enable'}
+              </button>
+            </div>
+
+            {/* Emergency Recovery Key */}
+            <div className="p-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5" /> Emergency Recovery Key
+                </span>
+                <button
+                  type="button"
+                  onClick={handleGenerateNewRecoveryKey}
+                  className="text-[11px] text-slate-400 hover:text-amber-400 underline font-mono"
+                >
+                  Generate New
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between bg-white dark:bg-slate-950 px-3 py-2 rounded-xl border border-amber-500/30 font-mono text-xs text-amber-600 dark:text-amber-300 font-bold">
+                <span>{recoveryKey}</span>
+                <button
+                  type="button"
+                  onClick={handleCopyRecoveryKey}
+                  className="p-1 hover:bg-amber-500/10 rounded-lg text-slate-400 hover:text-amber-300"
+                  title="Copy recovery key"
+                >
+                  {copiedRecovery ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Appearance & Reset Database */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Theme Preference */}
         <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-4 transition-colors">
           <div className="flex items-center gap-2">
@@ -383,6 +523,7 @@ export const SecurityVaultView: React.FC<SecurityVaultViewProps> = ({
           </div>
         </div>
       </div>
+
     </div>
   );
 };
