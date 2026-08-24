@@ -1,4 +1,4 @@
-import { Transaction, Rule, VaultHealth, AutoFetchStatus } from '../types';
+import { Transaction, Rule, VaultHealth, AutoFetchStatus, StatementType } from '../types';
 
 export const api = {
   async getHealth(): Promise<VaultHealth> {
@@ -135,7 +135,7 @@ export const api = {
     textContent?: string;
     institution?: string;
     accountName?: string;
-  }): Promise<{ success: boolean; method: string; transactions?: Partial<Transaction>[]; textToParse?: string }> {
+  }): Promise<{ success: boolean; method: string; transactions?: Partial<Transaction>[]; textToParse?: string; statementType?: StatementType }> {
     const res = await fetch('/api/documents/parse', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

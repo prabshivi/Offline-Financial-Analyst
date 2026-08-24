@@ -23,9 +23,11 @@ import {
   FileCheck,
   FileSearch,
   Zap,
-  Info
+  Info,
+  Briefcase,
+  User
 } from 'lucide-react';
-import { StagingTransaction, InstitutionType, Transaction } from '../types';
+import { StagingTransaction, InstitutionType, Transaction, StatementType } from '../types';
 import { parseStatementFile, generateSampleStatement } from '../utils/parser';
 import { STANDARD_CATEGORIES, cleanMerchantName, generateTransactionId } from '../utils/categorizer';
 import { scrubPII } from '../utils/security';
@@ -69,6 +71,7 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
   const [dragOver, setDragOver] = useState(false);
   const [lastUploadedFileName, setLastUploadedFileName] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [detectedStatementType, setDetectedStatementType] = useState<StatementType | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const existingIds = new Set<string>(existingTransactions.map((t) => t.id));
@@ -103,6 +106,7 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
     setIsProcessing(true);
     setCommitResult(null);
     setErrorMessage(null);
+    setDetectedStatementType(null);
 
     const allParsed: StagingTransaction[] = [];
 
@@ -129,6 +133,11 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
             accountName
           });
 
+          // Capture statement type from API response
+          if (response.statementType) {
+            setDetectedStatementType(response.statementType);
+          }
+
           if (response.transactions && response.transactions.length > 0) {
             const staged: StagingTransaction[] = response.transactions.map((t, idx) => {
               const scrubbedRaw = scrubPII(t.raw_description || 'Document Transaction');
@@ -152,6 +161,14 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
           } else if (response.textToParse) {
             const parsed = parseStatementFile(response.textToParse, institution, accountName, existingIds);
             allParsed.push(...parsed);
+            // Detect statement type from extracted text if not already set
+            if (!response.statementType || response.statementType === 'unknown') {
+              const textLower = response.textToParse.toLowerCase();
+              const hasBizSignals = ['inc.', 'corp.', 'ltd.', 'llc', 'business account', 'corporate', 'hst', 'gst', 'payroll', 'accounts payable'].some(s => textLower.includes(s));
+              const hasPersonalSignals = ['personal', 'chequing account', 'savings account', 'rrsp', 'tfsa', 'grocery', 'netflix'].some(s => textLower.includes(s));
+              if (hasBizSignals && !hasPersonalSignals) setDetectedStatementType('business');
+              else if (hasPersonalSignals && !hasBizSignals) setDetectedStatementType('personal');
+            }
           }
         } catch (err: any) {
           console.warn('PDF document parse error, attempting client text fallback:', err);
@@ -329,6 +346,48 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
       </div>
 
       {/* Error Alert */}
+      {/* Statement Type Detection Badge */}
+      {detectedStatementType && detectedStatementType !== 'unknown' && (
+        <div className={`p-4 rounded-2xl border flex items-center gap-3 text-sm animate-in fade-in transition-all ${
+          detectedStatementType === 'personal'
+            ? 'bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800/60 text-sky-900 dark:text-sky-100'
+            : 'bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-800/60 text-violet-900 dark:text-violet-100'
+        }`}>
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+            detectedStatementType === 'personal'
+              ? 'bg-sky-600 text-white'
+              : 'bg-violet-600 text-white'
+          }`}>
+            {detectedStatementType === 'personal' ? (
+              <User className="w-5 h-5" />
+            ) : (
+              <Briefcase className="w-5 h-5" />
+            )}
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-sm">
+              {detectedStatementType === 'personal' ? '🟢 Personal Statement Detected' : '🟣 Business / Incorporation Statement Detected'}
+            </p>
+            <p className={`text-xs mt-0.5 ${
+              detectedStatementType === 'personal'
+                ? 'text-sky-700 dark:text-sky-300'
+                : 'text-violet-700 dark:text-violet-300'
+            }`}>
+              {detectedStatementType === 'personal'
+                ? 'This document appears to be an individual/personal bank or credit card statement.'
+                : 'This document appears to be a business, corporate, or incorporation financial statement.'}
+            </p>
+          </div>
+          <span className={`px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase ${
+            detectedStatementType === 'personal'
+              ? 'bg-sky-200 dark:bg-sky-800 text-sky-800 dark:text-sky-200'
+              : 'bg-violet-200 dark:bg-violet-800 text-violet-800 dark:text-violet-200'
+          }`}>
+            {detectedStatementType === 'personal' ? 'Personal' : 'Business'}
+          </span>
+        </div>
+      )}
+
       {errorMessage && (
         <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/60 text-rose-900 dark:text-rose-200 flex items-start gap-3 text-xs">
           <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />

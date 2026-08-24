@@ -5,6 +5,66 @@ import { createServer as createViteServer } from 'vite';
 import { vaultDb, TransactionRecord } from './src/server/database';
 import { GoogleGenAI } from '@google/genai';
 import { scrubPII } from './src/utils/security';
+// @ts-ignore — pdf-parse has no bundled types
+import pdfParse from 'pdf-parse';
+
+type StatementType = 'personal' | 'business' | 'unknown';
+
+/**
+ * Detects whether a financial statement is personal or business/incorporation.
+ * Scans extracted text for keyword signals.
+ */
+function detectStatementType(text: string): StatementType {
+  const lower = text.toLowerCase();
+
+  // Business / Incorporation signals
+  const businessSignals = [
+    'inc.', 'inc ', 'corp.', 'corp ', 'ltd.', 'ltd ', 'llc', 'l.l.c.',
+    'limited', 'incorporated', 'corporation',
+    'business account', 'business chequing', 'business savings',
+    'corporate', 'commercial', 'operating account',
+    'hst', 'gst', 'ein:', 'business number', 'bn:',
+    'payroll', 'accounts payable', 'accounts receivable', 'a/p', 'a/r',
+    'invoice', 'vendor', 'supplier',
+    'articles of incorporation', 'certificate of incorporation',
+    'registered agent', 'bylaws', 'shareholders',
+    'profit and loss', 'balance sheet', 'capital stock',
+    'dba', 'd.b.a.', 'doing business as',
+    'merchant services', 'point of sale', 'pos terminal',
+    'business visa', 'business mastercard', 'corporate card',
+    'commercial loan', 'business line of credit'
+  ];
+
+  // Personal signals
+  const personalSignals = [
+    'personal account', 'personal chequing', 'personal savings',
+    'chequing account', 'checking account', 'savings account',
+    'visa infinite', 'visa platinum', 'gold visa', 'cashback',
+    'joint account', 'individual account',
+    'rrsp', 'tfsa', 'resp', 'fhsa', 'ira', '401k', '401(k)', 'roth',
+    'personal visa', 'personal mastercard',
+    'mortgage payment', 'auto loan', 'student loan',
+    'grocery', 'groceries', 'dining', 'restaurant', 'uber eats',
+    'netflix', 'spotify', 'amazon prime', 'disney+',
+    'gym', 'fitness', 'pharmacy'
+  ];
+
+  let businessScore = 0;
+  let personalScore = 0;
+
+  for (const signal of businessSignals) {
+    if (lower.includes(signal)) businessScore++;
+  }
+  for (const signal of personalSignals) {
+    if (lower.includes(signal)) personalScore++;
+  }
+
+  if (businessScore >= 2 && businessScore > personalScore) return 'business';
+  if (personalScore >= 2 && personalScore > businessScore) return 'personal';
+  if (businessScore > 0 && personalScore === 0) return 'business';
+  if (personalScore > 0 && businessScore === 0) return 'personal';
+  return 'unknown';
+}
 
 // Dropzone directories for automated statement ingestion
 const DROPZONE_DIR = path.join(process.cwd(), 'data', 'dropzone');
@@ -54,7 +114,9 @@ async function startServer() {
   app.post('/api/documents/parse', async (req, res) => {
     try {
       const { fileName, fileType, base64Data, textContent, institution, accountName } = req.body;
-      const isPdfOrImage = fileType?.includes('pdf') || fileType?.includes('image') || fileName?.endsWith('.pdf') || fileName?.endsWith('.png') || fileName?.endsWith('.jpg') || fileName?.endsWith('.jpeg') || fileName?.endsWith('.webp');
+      const isPdf = fileType?.includes('pdf') || fileName?.toLowerCase().endsWith('.pdf');
+      const isImage = fileType?.includes('image') || /\.(png|jpg|jpeg|webp)$/i.test(fileName || '');
+      const isPdfOrImage = isPdf || isImage;
 
       // If PDF or Image and GEMINI_API_KEY is available, use multimodal Gemini 3.7 Flash
       if (isPdfOrImage && base64Data && process.env.GEMINI_API_KEY) {
@@ -68,7 +130,7 @@ async function startServer() {
             }
           });
 
-          let mimeType = fileType || (fileName?.endsWith('.pdf') ? 'application/pdf' : 'image/png');
+          let mimeType = fileType || (isPdf ? 'application/pdf' : 'image/png');
           if (mimeType.includes('pdf')) mimeType = 'application/pdf';
           else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) mimeType = 'image/jpeg';
           else if (mimeType.includes('png')) mimeType = 'image/png';
@@ -84,7 +146,10 @@ For each transaction, output a JSON object with:
 - "amount": number (negative for expenses/debits like -42.50, positive for income/deposits/credits like 3200.00)
 - "type": "outflow" for expenses/debits, "inflow" for deposits/credits
 
-Return a JSON array only.`;
+Also determine the statement type. At the top-level, include:
+- "statementType": "personal" if this is a personal bank statement (individual checking, savings, credit card), or "business" if it is a business/corporate/incorporation statement, or "unknown" if unclear.
+
+Return a JSON object: { "statementType": "...", "transactions": [...] }`;
 
           const response = await ai.models.generateContent({
             model: 'gemini-3.7-flash',
@@ -108,9 +173,11 @@ Return a JSON array only.`;
 
           const rawJson = response.text;
           if (rawJson) {
-            const parsedArray = JSON.parse(rawJson);
-            if (Array.isArray(parsedArray)) {
-              const transactions = parsedArray.map((t: any, idx: number) => ({
+            const parsed = JSON.parse(rawJson);
+            const aiStatementType: StatementType = parsed.statementType || 'unknown';
+            const parsedArray = Array.isArray(parsed) ? parsed : (parsed.transactions || []);
+            if (Array.isArray(parsedArray) && parsedArray.length > 0) {
+              const transactions = parsedArray.map((t: any) => ({
                 date: t.date || new Date().toISOString().split('T')[0],
                 institution: institution || 'Document Upload',
                 account_name: accountName || 'Imported Document Account',
@@ -120,30 +187,46 @@ Return a JSON array only.`;
                 amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0,
                 type: t.type || (t.amount >= 0 ? 'inflow' : 'outflow')
               }));
-              res.json({ success: true, method: 'ai_gemini_multimodal', transactions });
+              res.json({ success: true, method: 'ai_gemini_multimodal', transactions, statementType: aiStatementType });
               return;
             }
           }
         } catch (aiErr: any) {
-          console.warn('AI document parsing error, falling back to text regex:', aiErr.message);
+          console.warn('AI document parsing error, falling back to pdf-parse:', aiErr.message);
         }
       }
 
-      // If PDF with binary base64 and AI is offline, extract printable text strings
+      // PDF fallback: use pdf-parse to extract real text from PDF structure
+      if (isPdf && base64Data) {
+        try {
+          const buffer = Buffer.from(base64Data, 'base64');
+          const pdfData = await pdfParse(buffer);
+          const extractedText = pdfData.text || '';
+          const statementType = detectStatementType(extractedText);
+
+          if (extractedText.trim().length > 20) {
+            res.json({ success: true, method: 'pdf_parse_text', textToParse: extractedText, statementType });
+            return;
+          }
+        } catch (pdfErr: any) {
+          console.warn('pdf-parse extraction failed, falling back to raw bytes:', pdfErr.message);
+        }
+      }
+
+      // Final fallback: extract printable text from raw buffer (images, corrupt PDFs)
       let textToParse = textContent || '';
       if (!textToParse && base64Data) {
         try {
           const buffer = Buffer.from(base64Data, 'base64');
-          // Extract ascii text sequences from buffer
           const rawStr = buffer.toString('utf-8');
-          const printable = rawStr.replace(/[^\x20-\x7E\n\r\t]/g, ' ');
-          textToParse = printable;
+          textToParse = rawStr.replace(/[^\x20-\x7E\n\r\t]/g, ' ');
         } catch {
           textToParse = '';
         }
       }
 
-      res.json({ success: true, method: 'raw_text_ready', textToParse });
+      const statementType = detectStatementType(textToParse);
+      res.json({ success: true, method: 'raw_text_ready', textToParse, statementType });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -156,7 +239,7 @@ Return a JSON array only.`;
     buffer: Buffer,
     fileName: string,
     institutionGuess?: string
-  ): Promise<{ transactions: Partial<TransactionRecord>[]; method: string }> {
+  ): Promise<{ transactions: Partial<TransactionRecord>[]; method: string; statementType?: StatementType }> {
     const ext = path.extname(fileName).toLowerCase();
     const isPdf = ext === '.pdf';
     const isImage = ['.png', '.jpg', '.jpeg', '.webp'].includes(ext);
@@ -254,15 +337,61 @@ Return a JSON array only.`;
       }
     }
 
+    // Regex for date + description + amount line
+    // E.g. "2026-08-01 WHOLE FOODS -45.20" or "08/14/2026 STARBUCKS $6.50"
+    const lineRegex = /(?:(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})|(\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}))\s+([A-Za-z0-9\s*#&._\-'/,]{3,50})\s+([+-]?\$?\s*\d{1,6}(?:[.,]\d{2})?)/i;
+
+    // 2b. PDF fallback with pdf-parse (proper text extraction from PDF structure)
+    if (isPdf) {
+      try {
+        const pdfData = await pdfParse(buffer);
+        const extractedText = pdfData.text || '';
+        if (extractedText.trim().length > 20) {
+          // Re-parse the properly extracted text through our regex/CSV pipeline
+          const textLines = extractedText.split(/\r?\n/);
+          const pdfExtracted: Partial<TransactionRecord>[] = [];
+          for (const line of textLines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#') || trimmed.toLowerCase().startsWith('date')) continue;
+            const match = trimmed.match(lineRegex);
+            if (match) {
+              const dateStr = match[1] || match[2];
+              const descStr = match[3].trim();
+              const amtStr = match[4].replace(/[\$,\s]/g, '');
+              const numAmt = parseFloat(amtStr);
+              if (!isNaN(numAmt) && descStr.length > 2 && !descStr.toUpperCase().includes('BALANCE')) {
+                const rawDesc = scrubPII(descStr);
+                pdfExtracted.push({
+                  date: dateStr || new Date().toISOString().split('T')[0],
+                  institution,
+                  account_name: `${institution} Account`,
+                  raw_description: rawDesc,
+                  clean_merchant: scrubPII(vaultDb.guessMerchant(rawDesc)),
+                  category: vaultDb.categorize(rawDesc),
+                  amount: numAmt,
+                  type: numAmt >= 0 ? 'inflow' : 'outflow'
+                });
+              }
+            }
+          }
+          if (pdfExtracted.length > 0) {
+            const stType = detectStatementType(extractedText);
+            return { transactions: pdfExtracted, method: 'pdf_parse_text', statementType: stType };
+          }
+          // Even if no regex matches, return the text for the client-side parser
+          const stType = detectStatementType(extractedText);
+          return { transactions: [], method: 'pdf_parse_text_raw', statementType: stType };
+        }
+      } catch (pdfErr: any) {
+        console.warn('pdf-parse extraction failed in parseStatementBuffer:', pdfErr.message);
+      }
+    }
+
     // 3. Text / CSV / OFX / Raw regex extraction
     const rawText = buffer.toString('utf-8');
     const printable = rawText.replace(/[^\x20-\x7E\n\r\t]/g, ' ');
     const lines = printable.split(/\r?\n/);
     const extracted: Partial<TransactionRecord>[] = [];
-
-    // Regex for date + description + amount line
-    // E.g. "2026-08-01 WHOLE FOODS -45.20" or "08/14/2026 STARBUCKS $6.50"
-    const lineRegex = /(?:(\d{4}[-/.]\d{1,2}[-/.]\d{1,2})|(\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}))\s+([A-Za-z0-9\s*#&._\-'/,]{3,50})\s+([+-]?\$?\s*\d{1,6}(?:[.,]\d{2})?)/i;
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -317,7 +446,8 @@ Return a JSON array only.`;
       }
     }
 
-    return { transactions: extracted, method: isCsv ? 'csv_parser' : 'text_heuristic_parser' };
+    const stType = detectStatementType(printable);
+    return { transactions: extracted, method: isCsv ? 'csv_parser' : 'text_heuristic_parser', statementType: stType };
   }
 
   // Auto-scan dropzone runner

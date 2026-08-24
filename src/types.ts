@@ -181,3 +181,5 @@ export interface DebtPayoffPlanResult {
   milestones: DebtPayoffMilestone[];
 }
 
+export type StatementType = 'personal' | 'business' | 'unknown';
+
