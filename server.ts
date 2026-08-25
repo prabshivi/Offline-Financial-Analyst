@@ -6,7 +6,7 @@ import { vaultDb, TransactionRecord } from './src/server/database';
 import { GoogleGenAI } from '@google/genai';
 import { scrubPII } from './src/utils/security';
 // @ts-ignore — pdf-parse has no bundled types
-import pdfParse from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 
 type StatementType = 'personal' | 'business' | 'unknown';
 
@@ -200,7 +200,7 @@ Return a JSON object: { "statementType": "...", "transactions": [...] }`;
       if (isPdf && base64Data) {
         try {
           const buffer = Buffer.from(base64Data, 'base64');
-          const pdfData = await pdfParse(buffer);
+          const pdfData = await new PDFParse({ data: buffer }).getText();
           const extractedText = pdfData.text || '';
           const statementType = detectStatementType(extractedText);
 
@@ -344,7 +344,7 @@ Return a JSON array only.`;
     // 2b. PDF fallback with pdf-parse (proper text extraction from PDF structure)
     if (isPdf) {
       try {
-        const pdfData = await pdfParse(buffer);
+        const pdfData = await new PDFParse({ data: buffer }).getText();
         const extractedText = pdfData.text || '';
         if (extractedText.trim().length > 20) {
           // Re-parse the properly extracted text through our regex/CSV pipeline
