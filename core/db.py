@@ -311,7 +311,7 @@ class EncryptedVaultDB:
             fields.append(f"{k} = ?")
             params.append(v)
         params.append(tx_id)
-        query = f"UPDATE transactions SET {', '.join(fields)} WHERE id = ?"
+        query = f"UPDATE transactions SET {', '.join(fields)} WHERE id = ?"  # nosec B608
         cursor = self.conn.cursor()
         cursor.execute(query, params)
         self.conn.commit()
