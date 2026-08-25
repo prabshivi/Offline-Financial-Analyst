@@ -47,16 +47,12 @@ interface IngestionViewProps {
 }
 
 const BANK_PRESETS: { id: string; name: string; accountLabel: string; badge: string; sub: string }[] = [
-  { id: 'RBC', name: 'RBC Royal Bank', accountLabel: 'RBC Chequing / Avion', badge: 'CAD$ / CSV', sub: 'Canadian RBC' },
-  { id: 'TD', name: 'TD Canada Trust', accountLabel: 'TD All-Inclusive Chequing', badge: 'Debit/Credit', sub: 'Canadian TD' },
-  { id: 'Scotiabank', name: 'Scotiabank', accountLabel: 'Scotia Momentum / Scene', badge: 'CSV / PDF', sub: 'Canadian Scotia' },
-  { id: 'BMO', name: 'BMO Financial', accountLabel: 'BMO Premium Checking', badge: 'CSV', sub: 'Canadian BMO' },
-  { id: 'CIBC', name: 'CIBC', accountLabel: 'CIBC Smart Account / AAdvantage', badge: 'CSV / OFX', sub: 'Canadian CIBC' },
-  { id: 'Tangerine', name: 'Tangerine', accountLabel: 'Tangerine No-Fee Chequing', badge: 'CSV', sub: 'Canadian Direct' },
-  { id: 'Chase', name: 'Chase Bank', accountLabel: 'Chase Sapphire & Checking', badge: 'CSV / PDF', sub: 'US Chase' },
-  { id: 'Amex', name: 'American Express', accountLabel: 'Amex Gold / Platinum Card', badge: 'CSV', sub: 'US / Global' },
-  { id: 'Apple Card', name: 'Apple Card', accountLabel: 'Apple Card Goldman Sachs', badge: 'CSV / Wallet', sub: 'Apple Wallet' },
-  { id: 'Generic CSV', name: 'Universal Document', accountLabel: 'Personal Vault Account', badge: 'CSV/PDF/OFX', sub: 'All Banks' },
+  { id: 'Personal Checking', name: 'Personal Checking / Debit', accountLabel: 'Primary Checking Account', badge: 'PDF / CSV', sub: 'Day-to-day cashflow' },
+  { id: 'Credit Card', name: 'Credit Card Statement', accountLabel: 'Primary Credit Card', badge: 'PDF / CSV', sub: 'Expenses & Points' },
+  { id: 'High Yield Savings', name: 'Savings & Liquidity', accountLabel: 'Emergency Fund / Savings', badge: 'PDF / CSV', sub: 'Yield & Inflows' },
+  { id: 'Business Operating', name: 'Business / Commercial', accountLabel: 'Operating Entity Account', badge: 'PDF / CSV', sub: 'Revenues & SaaS' },
+  { id: 'Investment Portfolio', name: 'Brokerage & Investments', accountLabel: 'Investment Portfolio', badge: 'PDF / CSV', sub: 'Equities & Dividends' },
+  { id: 'Universal Document', name: 'Universal Financial PDF', accountLabel: 'Imported Financial Statement', badge: 'AI Autodetect', sub: 'Any Statement' },
 ];
 
 export const IngestionView: React.FC<IngestionViewProps> = ({
@@ -76,8 +72,8 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
   const [selectedSimBank, setSelectedSimBank] = useState('RBC Royal Bank');
   const [autoNotification, setAutoNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const [institution, setInstitution] = useState<string>('RBC');
-  const [accountName, setAccountName] = useState<string>('RBC Chequing / Avion');
+  const [institution, setInstitution] = useState<string>('Personal Checking');
+  const [accountName, setAccountName] = useState<string>('Primary Checking Account');
   const [stagingData, setStagingData] = useState<StagingTransaction[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string>('');

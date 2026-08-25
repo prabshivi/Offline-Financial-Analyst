@@ -2,11 +2,11 @@ import { AIStatementProfile, StatementType, StatementVisibleSections, StatementC
 
 export const DEFAULT_PERSONAL_PROFILE: AIStatementProfile = {
   id: 'default-personal',
-  fileName: 'August_2026_Chase_Sapphire.pdf',
+  fileName: 'Financial_Statement_Aug2026.pdf',
   uploadedAt: new Date().toISOString(),
-  accountHolder: 'Alex Morgan',
+  accountHolder: 'Primary Vault Member',
   statementType: 'personal',
-  institution: 'Chase Bank',
+  institution: 'Primary Financial Account',
   accountNumberMasked: '...9420',
   accountType: 'checking',
   statementPeriod: {
@@ -20,9 +20,9 @@ export const DEFAULT_PERSONAL_PROFILE: AIStatementProfile = {
   totalOutflows: 6047.97,
   netCashflow: 3670.45,
   currency: 'USD',
-  detectedPersona: 'Tech Professional / High-Income Earner',
+  detectedPersona: 'Personal Financial Portfolio',
   detectedKeyMetrics: {
-    primaryIncomeSource: 'Tech Corp Payroll (Direct Deposit)',
+    primaryIncomeSource: 'Direct Deposit Payroll',
     averageMonthlyIncome: 9700.00,
     fixedExpenseRatio: 48,
     discretionaryRatio: 22,
@@ -31,18 +31,18 @@ export const DEFAULT_PERSONAL_PROFILE: AIStatementProfile = {
     taxDeductibleRatio: 4.2
   },
   detectedSubscriptions: [
-    { merchant: 'Netflix', amount: 22.99, cadence: 'monthly', category: 'Entertainment & Subscriptions', isEssential: false, cancellationTip: 'Recent price hike from $19.99 detected. Consider standard plan.', confidence: 98 },
+    { merchant: 'Netflix', amount: 22.99, cadence: 'monthly', category: 'Entertainment & Subscriptions', isEssential: false, cancellationTip: 'Recent price hike detected. Consider standard tier.', confidence: 98 },
     { merchant: 'ChatGPT Plus (OpenAI)', amount: 20.00, cadence: 'monthly', category: 'Software & Technology', isEssential: true, cancellationTip: 'Heavy daily productivity usage.', confidence: 99 },
     { merchant: 'Apple Services (iCloud + Music)', amount: 14.99, cadence: 'monthly', category: 'Entertainment & Subscriptions', isEssential: false, cancellationTip: 'Family bundle could save 20%.', confidence: 95 },
     { merchant: 'Equinox Fitness Club', amount: 280.00, cadence: 'monthly', category: 'Fitness & Wellness', isEssential: true, cancellationTip: 'Consistent bi-weekly attendance logged.', confidence: 96 },
-    { merchant: 'Spotify USA', amount: 11.99, cadence: 'monthly', category: 'Entertainment & Subscriptions', isEssential: false, cancellationTip: 'Active daily streaming service.', confidence: 97 },
+    { merchant: 'Spotify Premium', amount: 11.99, cadence: 'monthly', category: 'Entertainment & Subscriptions', isEssential: false, cancellationTip: 'Active daily streaming service.', confidence: 97 },
     { merchant: 'YouTube Premium', amount: 13.99, cadence: 'monthly', category: 'Entertainment & Subscriptions', isEssential: false, cancellationTip: 'Ad-free playback & background audio.', confidence: 94 },
     { merchant: 'Amazon Prime', amount: 139.00, cadence: 'annual', category: 'Entertainment & Subscriptions', isEssential: false, cancellationTip: 'Annual renewal scheduled for Aug 2027.', confidence: 92 },
-    { merchant: 'New York Times', amount: 4.00, cadence: 'monthly', category: 'Entertainment & Subscriptions', isEssential: false, cancellationTip: 'Promotional rate ending in 3 months.', confidence: 90 }
+    { merchant: 'News Subscription', amount: 4.00, cadence: 'monthly', category: 'Entertainment & Subscriptions', isEssential: false, cancellationTip: 'Promotional rate ending in 3 months.', confidence: 90 }
   ],
   customUITheme: {
     dashboardTitle: 'Personal Wealth & Cashflow Executive',
-    dashboardSubtitle: 'Live telemetry synthesized from Chase Total Checking & Sapphire Statement',
+    dashboardSubtitle: 'Live telemetry synthesized from parsed financial statement',
     outflowMetricLabel: 'Total Living Expenses',
     inflowMetricLabel: 'Net Payroll & Inflows',
     netCashflowLabel: 'Monthly Net Savings',
@@ -51,8 +51,8 @@ export const DEFAULT_PERSONAL_PROFILE: AIStatementProfile = {
     budgetTabLabel: 'Household Budget Targets',
     ledgerTabLabel: 'Personal Vault Ledger',
     recommendationTitle: 'Personal Wealth Optimization Signals',
-    personaBadge: 'Tech Professional Portfolio',
-    accountBadge: 'Chase Checking (...9420)',
+    personaBadge: 'Individual Portfolio',
+    accountBadge: 'Checking (...9420)',
     themeAccent: 'cyan'
   },
   visibleSections: {

@@ -10,6 +10,10 @@ import { SecurityVaultView } from './components/SecurityVaultView';
 import { DebtPayoffView } from './components/DebtPayoffView';
 import { RecurringSubscriptionsView } from './components/RecurringSubscriptionsView';
 import { NightlyRunsView } from './components/NightlyRunsView';
+import { AutoFetchView } from './components/AutoFetchView';
+import { ReportsAnalyticsView } from './components/ReportsAnalyticsView';
+import { TaxPlannerView } from './components/TaxPlannerView';
+import { DomainSettingsView } from './components/DomainSettingsView';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { TransactionDetailModal } from './components/TransactionDetailModal';
 import { VaultLockScreen } from './components/VaultLockScreen';
@@ -19,6 +23,8 @@ import { api } from './utils/api';
 import { DEFAULT_RULES } from './utils/categorizer';
 import { getActiveStatementProfile } from './utils/statementProfileManager';
 import { getTabFromLocation, syncRouteToHistory } from './utils/router';
+import { isSiteEnabled, getAppDomain, isPageEnabled } from './utils/envConfig';
+import { Globe, Lock, ShieldAlert, CheckCircle2, ArrowRight } from 'lucide-react';
 
 export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -39,12 +45,16 @@ export default function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [auditTransaction, setAuditTransaction] = useState<Transaction | null>(null);
   const [loginAuditToast, setLoginAuditToast] = useState<string | null>(null);
+  const [siteEnabledOverride, setSiteEnabledOverride] = useState<boolean>(isSiteEnabled());
   const [lastLoginTime, setLastLoginTime] = useState<string>(() => {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   });
 
   // Seamless URL navigation handler that updates browser history
   const handleNavigate = useCallback((tab: string) => {
+    if (!isPageEnabled(tab)) {
+      tab = 'dashboard';
+    }
     setActiveTab(tab);
     syncRouteToHistory(tab);
   }, []);
@@ -65,56 +75,9 @@ export default function App() {
       window.removeEventListener('popstate', handlePopState);
       window.removeEventListener('hashchange', handlePopState);
     };
-  }, []);
+  }, [activeTab]);
 
-  // Derived vault statistics
-  const vaultStats = useMemo<VaultStats>(() => {
-    let totalInflow = 0;
-    let totalOutflow = 0;
-    const instSet = new Set<string>();
-    for (const t of transactions) {
-      const amt = Number(t.amount) || 0;
-      if (amt > 0 || t.type === 'inflow') totalInflow += amt;
-      else totalOutflow += Math.abs(amt);
-      if (t.institution) instSet.add(t.institution);
-    }
-    const netSavings = totalInflow - totalOutflow;
-    const savingsRate = totalInflow > 0 ? (netSavings / totalInflow) * 100 : 0;
-    return {
-      totalInflow,
-      totalOutflow,
-      netSavings,
-      savingsRate,
-      transactionCount: transactions.length,
-      institutionCount: instSet.size,
-      categoryBreakdown: [],
-      monthlyTrend: [],
-      topMerchants: [],
-      institutionBreakdown: []
-    };
-  }, [transactions]);
-
-  const handleUnlockVault = () => {
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setLastLoginTime(timeStr);
-    setIsVaultLocked(false);
-    
-    // Dynamic Peace of Mind security audit stamp on every login
-    localStorage.setItem('vault_last_security_audit', `Verified upon login at ${timeStr}`);
-    setLoginAuditToast(`🛡️ Peace of Mind Security Audit: All 7 checks passed at ${timeStr} (Zero Cloud Leaks & Local AES-256 Verified)`);
-    
-    setTimeout(() => {
-      setLoginAuditToast(null);
-    }, 6000);
-  };
-
-  const isDarkMode = theme === 'dark';
-
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  };
-
-  // Sync dark class on document root
+  // Apply dark mode class to root document element
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
@@ -124,20 +87,28 @@ export default function App() {
     localStorage.setItem('vault_theme', theme);
   }, [theme]);
 
-  // Fetch all transactions and system state
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
+  const isDarkMode = theme === 'dark';
+
+  // Load Initial Vault Data from SQLite Server
   const loadVaultData = useCallback(async () => {
     try {
-      const [txData, rulesData, healthData] = await Promise.all([
+      setIsLoading(true);
+      const [txs, rls, hlt] = await Promise.all([
         api.getTransactions(),
         api.getRules(),
         api.getHealth()
       ]);
 
-      setTransactions(txData || []);
-      if (rulesData && rulesData.length > 0) {
-        setRules(rulesData);
+      setTransactions(txs);
+      if (rls && rls.length > 0) {
+        setRules(rls);
       }
-      setHealth(healthData);
+      setHealth(hlt);
+      setStatementProfile(getActiveStatementProfile());
     } catch (err) {
       console.error('Failed to load vault data:', err);
     } finally {
@@ -149,58 +120,104 @@ export default function App() {
     loadVaultData();
   }, [loadVaultData]);
 
-  // Listen for AI Statement Profile updates from PDF ingestion or preset switches
-  useEffect(() => {
-    const handleProfileUpdate = () => {
-      setStatementProfile(getActiveStatementProfile());
-    };
-    window.addEventListener('vault:statement-profile-updated', handleProfileUpdate);
-    window.addEventListener('storage', handleProfileUpdate);
-    return () => {
-      window.removeEventListener('vault:statement-profile-updated', handleProfileUpdate);
-      window.removeEventListener('storage', handleProfileUpdate);
-    };
-  }, []);
+  // Handler for successful authentication unlock
+  const handleUnlockVault = () => {
+    setIsVaultLocked(false);
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setLastLoginTime(now);
+    setLoginAuditToast(`Vault Unlocked at ${now} • Zero-Cloud Integrity Verified`);
+  };
 
-  // Seed sample transactions if requested or initially empty on demo
+  // Seed Realistic Bank Demo Statement Data
   const handleSeedSampleData = async () => {
-    setIsSeeding(true);
     try {
-      await api.seedSampleData();
+      setIsSeeding(true);
+      const seeded = await api.seedSampleData();
       await loadVaultData();
+      setStatementProfile(getActiveStatementProfile());
+      return seeded;
     } catch (err) {
-      console.error('Seed error:', err);
+      console.error('Failed to seed sample data:', err);
+      return [];
     } finally {
       setIsSeeding(false);
     }
   };
 
-  // Commit batch of staging transactions
-  const handleCommitTransactions = async (staging: StagingTransaction[]) => {
-    const result = await api.saveTransactions(staging);
-    await loadVaultData();
-    return result;
-  };
+  // Compute Live Telemetry & Vault Stats
+  const vaultStats = useMemo<VaultStats>(() => {
+    let totalInflow = 0;
+    let totalOutflow = 0;
+    const categoryTotals: Record<string, number> = {};
 
-  // Add single manual record
-  const handleAddSingleTransaction = async (tx: Partial<Transaction>) => {
-    const result = await api.saveTransactions([tx]);
-    await loadVaultData();
-    return result;
-  };
-
-  // Update transaction
-  const handleUpdateTransaction = async (id: string, updates: Partial<Transaction>) => {
-    const success = await api.updateTransaction(id, updates);
-    if (success) {
-      setTransactions((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
-      );
-      if (auditTransaction?.id === id) {
-        setAuditTransaction((prev) => (prev ? { ...prev, ...updates } : null));
+    transactions.forEach((tx) => {
+      const amount = Number(tx.amount) || 0;
+      if (tx.is_income || amount > 0) {
+        totalInflow += Math.abs(amount);
+      } else {
+        const val = Math.abs(amount);
+        totalOutflow += val;
+        const cat = tx.category || 'Uncategorized';
+        categoryTotals[cat] = (categoryTotals[cat] || 0) + val;
       }
-    }
-    return success;
+    });
+
+    const netSavings = totalInflow - totalOutflow;
+    const savingsRate = totalInflow > 0 ? Math.max(0, Math.round((netSavings / totalInflow) * 100)) : 0;
+
+    let topCategory = 'None';
+    let topCategoryAmount = 0;
+    Object.entries(categoryTotals).forEach(([cat, sum]) => {
+      if (sum > topCategoryAmount) {
+        topCategoryAmount = sum;
+        topCategory = cat;
+      }
+    });
+
+    return {
+      totalBalance: netSavings,
+      totalIncome: totalInflow,
+      totalExpenses: totalOutflow,
+      savingsRate,
+      topCategory,
+      topCategoryAmount,
+      transactionCount: transactions.length
+    };
+  }, [transactions]);
+
+  // Single transaction addition
+  const handleAddSingleTransaction = async (tx: Partial<Transaction>) => {
+    const res = await api.saveTransactions([tx]);
+    await loadVaultData();
+    return res;
+  };
+
+  // Batch commit staging transactions from Statement Ingestion
+  const handleCommitTransactions = async (stagingItems: StagingTransaction[]) => {
+    const itemsToCommit: Partial<Transaction>[] = stagingItems.map((st) => ({
+      date: st.date,
+      raw_description: st.raw_description || '',
+      clean_merchant: st.clean_merchant || '',
+      amount: st.amount,
+      category: st.category,
+      account_name: st.account_name || 'Primary Financial Account',
+      institution: st.institution || 'Primary Institution',
+      type: st.type || (st.amount > 0 ? 'inflow' : 'outflow'),
+      notes: st.notes || undefined,
+      tags: st.tags || undefined
+    }));
+
+    const result = await api.saveTransactions(itemsToCommit);
+    await loadVaultData();
+    setStatementProfile(getActiveStatementProfile());
+    return { inserted: result.inserted, duplicates: result.duplicates };
+  };
+
+  // Update existing transaction
+  const handleUpdateTransaction = async (id: string, updates: Partial<Transaction>) => {
+    const updated = await api.updateTransaction(id, updates);
+    await loadVaultData();
+    return updated;
   };
 
   // Delete single transaction
@@ -257,6 +274,7 @@ export default function App() {
     return res;
   };
 
+  // Remove artificial site blocking gate and render app directly
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans selection:bg-emerald-500/20 selection:text-emerald-900 dark:selection:text-emerald-300 transition-colors duration-200">
       {/* Top Application Header */}
@@ -266,6 +284,7 @@ export default function App() {
         isVaultLocked={isVaultLocked}
         isDarkMode={isDarkMode}
         activeTab={activeTab}
+        statementProfile={statementProfile}
         onToggleTheme={toggleTheme}
         onToggleLock={() => setIsVaultLocked(!isVaultLocked)}
         onOpenAddModal={() => setIsAddModalOpen(true)}
@@ -280,8 +299,8 @@ export default function App() {
           {isLoading ? (
             <div className="flex items-center justify-center min-h-[50vh]">
               <div className="text-center space-y-3">
-                <div className="w-10 h-10 border-3 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-                <p className="text-xs font-semibold text-slate-400 font-mono">Loading Private Financial Vault...</p>
+                <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                <p className="text-xs font-medium text-slate-400 font-mono">Loading Financial Vault...</p>
               </div>
             </div>
           ) : (
@@ -308,30 +327,11 @@ export default function App() {
 
           {/* Main Content Area */}
           <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto space-y-4">
-            {/* Dynamic Peace of Mind Login Security Banner */}
-            {loginAuditToast && (
-              <div className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs font-mono shadow-lg animate-in fade-in slide-in-from-top-2 duration-300">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                  <span className="font-semibold">{loginAuditToast}</span>
-                </div>
-                <button
-                  onClick={() => {
-                    handleNavigate('nightly');
-                    setLoginAuditToast(null);
-                  }}
-                  className="px-3 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] whitespace-nowrap transition-all shadow-xs cursor-pointer"
-                >
-                  View Peace of Mind Audit &rarr;
-                </button>
-              </div>
-            )}
-
             {isLoading ? (
               <div className="flex items-center justify-center min-h-[50vh]">
                 <div className="text-center space-y-3">
-                  <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-                  <p className="text-xs font-semibold text-slate-400 font-mono">Loading Private Financial Vault...</p>
+                  <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  <p className="text-xs font-medium text-slate-400 font-mono">Loading Financial Vault...</p>
                 </div>
               </div>
             ) : (
@@ -349,92 +349,126 @@ export default function App() {
                   />
                 )}
 
-              {activeTab === 'budget' && (
-                <BudgetTrackerView
-                  transactions={transactions}
-                  isDarkMode={isDarkMode}
-                  statementProfile={statementProfile}
-                  onNavigate={handleNavigate}
-                  onOpenDetailModal={(tx) => setAuditTransaction(tx)}
-                />
-              )}
+                {activeTab === 'budget' && (
+                  <BudgetTrackerView
+                    transactions={transactions}
+                    isDarkMode={isDarkMode}
+                    statementProfile={statementProfile}
+                    onNavigate={handleNavigate}
+                    onOpenDetailModal={(tx) => setAuditTransaction(tx)}
+                  />
+                )}
 
-              {activeTab === 'subscriptions' && (
-                <RecurringSubscriptionsView
-                  transactions={transactions}
-                  isDarkMode={isDarkMode}
-                  statementProfile={statementProfile}
-                  onNavigate={handleNavigate}
-                  onOpenDetailModal={(tx) => setAuditTransaction(tx)}
-                />
-              )}
+                {activeTab === 'subscriptions' && (
+                  <RecurringSubscriptionsView
+                    transactions={transactions}
+                    isDarkMode={isDarkMode}
+                    statementProfile={statementProfile}
+                    onNavigate={handleNavigate}
+                    onOpenDetailModal={(tx) => setAuditTransaction(tx)}
+                  />
+                )}
 
-              {activeTab === 'debt-payoff' && (
-                <DebtPayoffView
-                  isDarkMode={isDarkMode}
-                  onNavigate={handleNavigate}
-                />
-              )}
+                {activeTab === 'debt-payoff' && (
+                  <DebtPayoffView
+                    isDarkMode={isDarkMode}
+                    onNavigate={handleNavigate}
+                  />
+                )}
 
-              {activeTab === 'ingestion' && (
-                <IngestionView
-                  existingTransactions={transactions}
-                  isDarkMode={isDarkMode}
-                  statementProfile={statementProfile}
-                  onCommitTransactions={handleCommitTransactions}
-                  onNavigate={handleNavigate}
-                  onRefreshAllData={loadVaultData}
-                />
-              )}
- 
-              {activeTab === 'ledger' && (
-                <MasterLedgerView
-                  transactions={transactions}
-                  isDarkMode={isDarkMode}
-                  statementProfile={statementProfile}
-                  onUpdateTransaction={handleUpdateTransaction}
-                  onDeleteTransaction={handleDeleteTransaction}
-                  onBulkDelete={handleBulkDelete}
-                  onOpenAddModal={() => setIsAddModalOpen(true)}
-                  onOpenDetailModal={(tx) => setAuditTransaction(tx)}
-                />
-              )}
- 
-              {activeTab === 'rules' && (
-                <RulesEngineView
-                  rules={rules}
-                  isDarkMode={isDarkMode}
-                  onSaveRule={handleSaveRule}
-                  onDeleteRule={handleDeleteRule}
-                />
-              )}
- 
-              {activeTab === 'security' && (
-                <SecurityVaultView
-                  health={health}
-                  transactionCount={transactions.length}
-                  isVaultLocked={isVaultLocked}
-                  isDarkMode={isDarkMode}
-                  onToggleTheme={toggleTheme}
-                  onToggleLock={() => setIsVaultLocked(!isVaultLocked)}
-                  onClearVault={handleClearVault}
-                  onImportData={handleImportData}
-                  onSeedSampleData={handleSeedSampleData}
-                  isSeeding={isSeeding}
-                />
-              )}
+                {activeTab === 'ingestion' && (
+                  <IngestionView
+                    existingTransactions={transactions}
+                    isDarkMode={isDarkMode}
+                    statementProfile={statementProfile}
+                    onCommitTransactions={handleCommitTransactions}
+                    onNavigate={handleNavigate}
+                    onRefreshAllData={loadVaultData}
+                  />
+                )}
 
-              {activeTab === 'nightly' && (
-                <NightlyRunsView
-                  isDarkMode={isDarkMode}
-                  onNavigate={handleNavigate}
-                  lastLoginTime={lastLoginTime}
-                />
-              )}
-            </>
-          )}
-        </main>
-      </div>
+                {activeTab === 'ledger' && (
+                  <MasterLedgerView
+                    transactions={transactions}
+                    isDarkMode={isDarkMode}
+                    statementProfile={statementProfile}
+                    onUpdateTransaction={handleUpdateTransaction}
+                    onDeleteTransaction={handleDeleteTransaction}
+                    onBulkDelete={handleBulkDelete}
+                    onOpenAddModal={() => setIsAddModalOpen(true)}
+                    onOpenDetailModal={(tx) => setAuditTransaction(tx)}
+                  />
+                )}
+
+                {activeTab === 'rules' && (
+                  <RulesEngineView
+                    rules={rules}
+                    isDarkMode={isDarkMode}
+                    onSaveRule={handleSaveRule}
+                    onDeleteRule={handleDeleteRule}
+                  />
+                )}
+
+                {activeTab === 'reports' && (
+                  <ReportsAnalyticsView
+                    transactions={transactions}
+                    isDarkMode={isDarkMode}
+                    statementProfile={statementProfile}
+                    onNavigate={handleNavigate}
+                    onOpenDetailModal={(tx) => setAuditTransaction(tx)}
+                  />
+                )}
+
+                {activeTab === 'tax-planner' && (
+                  <TaxPlannerView
+                    transactions={transactions}
+                    isDarkMode={isDarkMode}
+                    statementProfile={statementProfile}
+                    onNavigate={handleNavigate}
+                  />
+                )}
+
+                {activeTab === 'auto-fetch' && (
+                  <AutoFetchView
+                    onRefreshAllData={loadVaultData}
+                  />
+                )}
+
+                {activeTab === 'security' && (
+                  <SecurityVaultView
+                    health={health}
+                    transactionCount={transactions.length}
+                    isVaultLocked={isVaultLocked}
+                    isDarkMode={isDarkMode}
+                    onToggleTheme={toggleTheme}
+                    onToggleLock={() => setIsVaultLocked(!isVaultLocked)}
+                    onClearVault={handleClearVault}
+                    onImportData={handleImportData}
+                    onSeedSampleData={handleSeedSampleData}
+                    isSeeding={isSeeding}
+                  />
+                )}
+
+                {activeTab === 'nightly' && (
+                  <NightlyRunsView
+                    isDarkMode={isDarkMode}
+                    onNavigate={handleNavigate}
+                    lastLoginTime={lastLoginTime}
+                  />
+                )}
+
+                {activeTab === 'domain-settings' && (
+                  <DomainSettingsView
+                    isDarkMode={isDarkMode}
+                    onRefreshNavigation={() => {
+                      loadVaultData();
+                    }}
+                  />
+                )}
+              </>
+            )}
+          </main>
+        </div>
       )}
 
       {/* Manual Add Transaction Modal */}
@@ -452,17 +486,6 @@ export default function App() {
         onClose={() => setAuditTransaction(null)}
         onUpdate={handleUpdateTransaction}
         onDelete={handleDeleteTransaction}
-      />
-
-      {/* Zack the Golden Retriever Roaming Companion */}
-      <ZackRoamingCompanion
-        activeTab={activeTab}
-        transactionCount={transactions.length}
-        isVaultLocked={isVaultLocked}
-        transactions={transactions}
-        stats={vaultStats}
-        health={health}
-        onNavigate={handleNavigate}
       />
     </div>
   );

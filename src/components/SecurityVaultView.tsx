@@ -112,9 +112,9 @@ export const SecurityVaultView: React.FC<SecurityVaultViewProps> = ({
       badge: 'Intact'
     },
     {
-      name: 'Multi-Bank Format Parsing Shield',
-      desc: 'Debit and credit columns, signed values, and accounting formats normalized with 100% math accuracy.',
-      metric: 'RBC, TD, Scotiabank, CIBC, Chase, Amex, Apple Card supported',
+      name: 'Universal Statement Parsing Engine',
+      desc: 'Debit and credit columns, signed values, and multi-format statements normalized with 100% math accuracy.',
+      metric: 'AI-Powered PDF & Document parser ready',
       badge: 'Validated'
     },
     {

@@ -5,20 +5,20 @@ export const DEFAULT_DEBT_PORTFOLIO: DebtItem[] = [
     id: 'debt-mortgage-1',
     name: 'Primary Home Mortgage (30-Yr Fixed)',
     type: 'mortgage',
-    institution: 'RBC Royal Bank / TD Mortgage',
+    institution: 'Primary Mortgage Servicer',
     balance: 385000,
     interestRate: 5.65,
     minPayment: 2225,
     propertyValue: 520000,
     originationBalance: 420000,
     color: '#0284c7', // Sky Blue
-    notes: '5-year fixed term renewal in 2028'
+    notes: '5-year fixed term renewal'
   },
   {
     id: 'debt-auto-1',
-    name: 'Auto Loan (Honda CR-V)',
+    name: 'Auto Financing Loan',
     type: 'auto_loan',
-    institution: 'Scotiabank Auto Finance',
+    institution: 'Auto Finance Corporation',
     balance: 18450,
     interestRate: 6.99,
     minPayment: 460,
@@ -27,9 +27,9 @@ export const DEFAULT_DEBT_PORTFOLIO: DebtItem[] = [
   },
   {
     id: 'debt-cc-1',
-    name: 'Visa Infinite / Chase Sapphire Card',
+    name: 'Primary Revolving Credit Card',
     type: 'credit_card',
-    institution: 'TD Canada Trust / Chase',
+    institution: 'Credit Card Issuer',
     balance: 6850,
     interestRate: 19.99,
     minPayment: 210,
@@ -38,9 +38,9 @@ export const DEFAULT_DEBT_PORTFOLIO: DebtItem[] = [
   },
   {
     id: 'debt-student-1',
-    name: 'National Student Loan (Canada/US)',
+    name: 'Student Education Loan',
     type: 'student_loan',
-    institution: 'CSL / Nelnet',
+    institution: 'National Student Loan Service',
     balance: 14200,
     interestRate: 4.80,
     minPayment: 195,

@@ -12,15 +12,11 @@ import {
   Calendar,
   Sparkles,
   ArrowRight,
-  Receipt,
-  Globe,
-  Copy,
-  Check
+  Receipt
 } from 'lucide-react';
 import { Transaction, AIStatementProfile } from '../types';
 import { STANDARD_CATEGORIES, getCategoryColor } from '../utils/categorizer';
 import { getActiveStatementProfile } from '../utils/statementProfileManager';
-import { DOMAIN_NAME, getFullDomainUrl } from '../utils/router';
 
 interface BudgetTrackerViewProps {
   transactions: Transaction[];
@@ -74,16 +70,6 @@ export const BudgetTrackerView: React.FC<BudgetTrackerViewProps> = ({
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [tempBudgetInput, setTempBudgetInput] = useState<string>('');
-  const [copiedUrl, setCopiedUrl] = useState(false);
-
-  const handleCopyBudgetUrl = () => {
-    const fullUrl = getFullDomainUrl('budget');
-    if (navigator?.clipboard?.writeText) {
-      navigator.clipboard.writeText(fullUrl);
-    }
-    setCopiedUrl(true);
-    setTimeout(() => setCopiedUrl(false), 2500);
-  };
 
   const saveBudgets = (newBudgets: Record<string, number>) => {
     setBudgets(newBudgets);
@@ -187,27 +173,19 @@ export const BudgetTrackerView: React.FC<BudgetTrackerViewProps> = ({
             <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
               <Target className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> {theme.budgetTabLabel} (Monthly Targets)
             </h2>
-            <button
-              onClick={handleCopyBudgetUrl}
-              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:border-emerald-400 transition-colors cursor-pointer group"
-              title={`Direct URL: ${DOMAIN_NAME}/householdbudget`}
-            >
-              <Globe className="w-3 h-3 text-emerald-500 group-hover:rotate-12 transition-transform" />
-              <span>{DOMAIN_NAME}/householdbudget</span>
-              {copiedUrl ? (
-                <Check className="w-3 h-3 text-emerald-500 ml-0.5 animate-in zoom-in-50" />
-              ) : (
-                <Copy className="w-3 h-3 text-emerald-500/70 group-hover:text-emerald-500 ml-0.5" />
-              )}
-            </button>
             {profile?.detectedPersona && (
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                 {profile.detectedPersona}
               </span>
             )}
+            {profile?.accountHolder && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                {profile.accountHolder}
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Help budget targets automatically as {profile?.institution || 'PDF Statements'} are analyzed.
+            Dynamic budget targets automatically configured from uploaded PDF statements and active spending volume.
           </p>
         </div>
 

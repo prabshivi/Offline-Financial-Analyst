@@ -17,8 +17,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   onAddTransaction
 }) => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [institution, setInstitution] = useState<InstitutionType>('Chase');
-  const [accountName, setAccountName] = useState('Chase Primary');
+  const [institution, setInstitution] = useState<string>('Primary Account');
+  const [accountName, setAccountName] = useState('Operating Account');
   const [rawDescription, setRawDescription] = useState('');
   const [cleanMerchant, setCleanMerchant] = useState('');
   const [category, setCategory] = useState('Groceries');
@@ -175,20 +175,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Institution</label>
-              <select
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Financial Institution</label>
+              <input
+                type="text"
+                placeholder="e.g. Primary Account, Credit Card"
                 value={institution}
-                onChange={(e) => setInstitution(e.target.value as InstitutionType)}
+                onChange={(e) => setInstitution(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="Chase" className="dark:bg-slate-900">Chase</option>
-                <option value="Amex" className="dark:bg-slate-900">American Express</option>
-                <option value="Apple Card" className="dark:bg-slate-900">Apple Card</option>
-                <option value="Citibank" className="dark:bg-slate-900">Citibank</option>
-                <option value="Capital One" className="dark:bg-slate-900">Capital One</option>
-                <option value="Wells Fargo" className="dark:bg-slate-900">Wells Fargo</option>
-                <option value="Generic CSV" className="dark:bg-slate-900">Generic / Other</option>
-              </select>
+              />
             </div>
 
             <div>

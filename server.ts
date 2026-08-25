@@ -101,10 +101,19 @@ function ensureDropzoneDirs() {
 // Active supported models with cascade fallback for high demand/availability
 const SUPPORTED_GEMINI_MODELS = [
   'gemini-3.7-flash',
-  'gemini-3.6-flash',
   'gemini-3.1-flash-lite',
   'gemini-flash-latest'
 ];
+
+function cleanJsonString(raw: string): string {
+  if (!raw) return '';
+  let cleaned = raw.trim();
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
+    cleaned = cleaned.replace(/\s*```$/, '');
+  }
+  return cleaned.trim();
+}
 
 async function callGeminiModelWithFallback(
   params: {
@@ -131,25 +140,33 @@ async function callGeminiModelWithFallback(
 
   for (let i = 0; i < models.length; i++) {
     const model = models[i];
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: params.contents,
-        config: params.config
-      });
+    // Allow up to 2 attempts per model for transient 503/429 spikes
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: params.contents,
+          config: params.config
+        });
 
-      const text = response.text;
-      if (text) {
-        return { text, modelUsed: model };
-      }
-    } catch (err: any) {
-      lastError = err;
-      const status = err?.status || err?.code || err?.statusCode;
-      console.warn(`AI model ${model} parsing error, trying next fallback:`, err.message || err);
-      
-      // If temporary overload / rate limit / 503 / 429, brief backoff before trying next fallback model
-      if (status === 503 || status === 429 || status === 500) {
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        const text = response.text;
+        if (text) {
+          return { text: cleanJsonString(text), modelUsed: model };
+        }
+      } catch (err: any) {
+        lastError = err;
+        const status = err?.status || err?.code || err?.statusCode || (err?.message?.includes('503') ? 503 : 0);
+        const isTemporary = status === 503 || status === 429 || status === 'UNAVAILABLE' || err?.message?.includes('high demand');
+
+        if (attempt === 1 && isTemporary) {
+          // Quick jittered backoff before second attempt on this model
+          await new Promise((resolve) => setTimeout(resolve, 400 + Math.random() * 200));
+          continue;
+        }
+
+        // If second attempt failed or not temporary, step down to next model in cascade
+        console.warn(`[Gemini Cascade] ${model} unavailable (attempt ${attempt}/2), switching to fallback model`);
+        break;
       }
     }
   }
@@ -296,29 +313,34 @@ Return a valid JSON object with the following exact structure:
           });
 
           if (rawJson) {
-            const parsed = JSON.parse(rawJson);
-            const aiStatementProfile = parsed.statementProfile || null;
-            const aiStatementType: StatementType = aiStatementProfile?.statementType || parsed.statementType || 'unknown';
-            const parsedArray = Array.isArray(parsed) ? parsed : (parsed.transactions || []);
-            if (Array.isArray(parsedArray) && parsedArray.length > 0) {
-              const transactions = parsedArray.map((t: any) => ({
-                date: t.date || new Date().toISOString().split('T')[0],
-                institution: institution || aiStatementProfile?.institution || 'Document Upload',
-                account_name: accountName || aiStatementProfile?.accountHolder || 'Imported Document Account',
-                raw_description: t.raw_description || t.description || 'Document Transaction',
-                clean_merchant: t.clean_merchant || t.raw_description || 'Merchant',
-                category: t.category || 'Miscellaneous',
-                amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0,
-                type: t.type || (t.amount >= 0 ? 'inflow' : 'outflow')
-              }));
-              res.json({ 
-                success: true, 
-                method: `ai_${modelUsed}_multimodal`, 
-                transactions, 
-                statementType: aiStatementType,
-                statementProfile: aiStatementProfile 
-              });
-              return;
+            try {
+              const cleaned = cleanJsonString(rawJson);
+              const parsed = JSON.parse(cleaned);
+              const aiStatementProfile = parsed.statementProfile || null;
+              const aiStatementType: StatementType = aiStatementProfile?.statementType || parsed.statementType || 'unknown';
+              const parsedArray = Array.isArray(parsed) ? parsed : (parsed.transactions || []);
+              if (Array.isArray(parsedArray) && parsedArray.length > 0) {
+                const transactions = parsedArray.map((t: any) => ({
+                  date: t.date || new Date().toISOString().split('T')[0],
+                  institution: institution || aiStatementProfile?.institution || 'Document Upload',
+                  account_name: accountName || aiStatementProfile?.accountHolder || 'Imported Document Account',
+                  raw_description: t.raw_description || t.description || 'Document Transaction',
+                  clean_merchant: t.clean_merchant || t.raw_description || 'Merchant',
+                  category: t.category || 'Miscellaneous',
+                  amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0,
+                  type: t.type || (t.amount >= 0 ? 'inflow' : 'outflow')
+                }));
+                res.json({ 
+                  success: true, 
+                  method: `ai_${modelUsed}_multimodal`, 
+                  transactions, 
+                  statementType: aiStatementType,
+                  statementProfile: aiStatementProfile 
+                });
+                return;
+              }
+            } catch (jsonErr: any) {
+              console.warn('JSON parsing from AI response failed, proceeding to next parser:', jsonErr.message);
             }
           }
         } catch (aiErr: any) {
@@ -461,8 +483,13 @@ Return ONLY a JSON object matching this schema:
           });
 
           if (text) {
-            const profile = JSON.parse(text);
-            return res.json({ success: true, profile });
+            try {
+              const cleaned = cleanJsonString(text);
+              const profile = JSON.parse(cleaned);
+              return res.json({ success: true, profile });
+            } catch (jsonErr: any) {
+              console.warn('JSON parsing from AI profile synthesis failed:', jsonErr.message);
+            }
           }
         } catch (genErr: any) {
           console.warn('AI statement profile synthesis failed:', genErr.message);
@@ -567,23 +594,28 @@ Return a JSON array only.`;
         });
 
         if (rawJson) {
-          const parsed = JSON.parse(rawJson);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const sanitized = parsed.map((t: any) => {
-              const rawDesc = scrubPII(t.raw_description || t.description || 'Bank Statement Row');
-              const cleanM = t.clean_merchant ? scrubPII(t.clean_merchant) : vaultDb.guessMerchant(rawDesc);
-              return {
-                date: t.date || new Date().toISOString().split('T')[0],
-                institution: institution,
-                account_name: `${institution} e-Statement`,
-                raw_description: rawDesc,
-                clean_merchant: cleanM,
-                category: t.category || vaultDb.categorize(rawDesc),
-                amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0,
-                type: t.type || ((Number(t.amount) || 0) >= 0 ? 'inflow' : 'outflow')
-              };
-            });
-            return { transactions: sanitized, method: `gemini_multimodal_${modelUsed}` };
+          try {
+            const cleaned = cleanJsonString(rawJson);
+            const parsed = JSON.parse(cleaned);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const sanitized = parsed.map((t: any) => {
+                const rawDesc = scrubPII(t.raw_description || t.description || 'Bank Statement Row');
+                const cleanM = t.clean_merchant ? scrubPII(t.clean_merchant) : vaultDb.guessMerchant(rawDesc);
+                return {
+                  date: t.date || new Date().toISOString().split('T')[0],
+                  institution: institution,
+                  account_name: `${institution} e-Statement`,
+                  raw_description: rawDesc,
+                  clean_merchant: cleanM,
+                  category: t.category || vaultDb.categorize(rawDesc),
+                  amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0,
+                  type: t.type || ((Number(t.amount) || 0) >= 0 ? 'inflow' : 'outflow')
+                };
+              });
+              return { transactions: sanitized, method: `gemini_multimodal_${modelUsed}` };
+            }
+          } catch (jsonErr: any) {
+            console.warn('JSON parsing from statement buffer failed:', jsonErr.message);
           }
         }
       } catch (err: any) {
@@ -1225,9 +1257,14 @@ Array of { "description": string, "category": string, "clean_merchant": string }
       });
 
       if (text) {
-        const parsed = JSON.parse(text);
-        res.json({ categories: parsed });
-        return;
+        try {
+          const cleaned = cleanJsonString(text);
+          const parsed = JSON.parse(cleaned);
+          res.json({ categories: parsed });
+          return;
+        } catch (jsonErr: any) {
+          console.warn('JSON parsing from AI categorization failed:', jsonErr.message);
+        }
       }
 
       // Fallback if empty text

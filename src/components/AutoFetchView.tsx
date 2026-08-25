@@ -35,9 +35,9 @@ export const AutoFetchView: React.FC<AutoFetchViewProps> = ({ onRefreshAllData }
   const [isLoading, setIsLoading] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [selectedSimBank, setSelectedSimBank] = useState('RBC Royal Bank');
+  const [selectedSimBank, setSelectedSimBank] = useState('Checking & Savings Account');
   const [activeScriptTab, setActiveScriptTab] = useState<'playwright' | 'python' | 'curl' | 'email'>('playwright');
-  const [selectedScriptBank, setSelectedScriptBank] = useState('RBC Royal Bank');
+  const [selectedScriptBank, setSelectedScriptBank] = useState('Primary Financial Account');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -279,9 +279,9 @@ curl -X POST http://localhost:3000/api/auto-fetch/webhook \\
   -H "Content-Type: application/json" \\
   -H "x-vault-token: ${status?.webhookToken || 'vault-auto-sync-key-8891'}" \\
   -d '{
-    "fileName": "RBC_Statement_Aug2026.pdf",
+    "fileName": "Statement_Aug2026.pdf",
     "base64Data": "'$(base64 -i ~/Downloads/statement.pdf | tr -d '\\n')'",
-    "institution": "RBC Royal Bank"
+    "institution": "Primary Financial Account"
   }'
 
 # 2. Trigger an immediate background dropzone scan:

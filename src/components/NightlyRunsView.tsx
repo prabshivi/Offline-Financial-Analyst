@@ -118,14 +118,14 @@ export const NightlyRunsView: React.FC<NightlyRunsViewProps> = ({
     },
     {
       id: 'sec-5',
-      name: 'Multi-Bank Format Parsing Shield (Chase, RBC, TD, CIBC, Amex)',
+      name: 'AI-Powered Universal PDF & Financial Statement Parser',
       category: 'Privacy & PII',
       status: 'passed',
       durationMs: 11,
-      badge: 'Bank-Grade Parser',
-      message: 'Debit and credit columns, signed values, and accounting formats normalized with 100% math accuracy.',
-      peaceOfMindDetail: 'Handles US and Canadian bank idiosyncrasies without misallocating income versus expense amounts.',
-      technicalMetric: '5 Bank Engines Benchmark Passing'
+      badge: 'Universal Parser',
+      message: 'Debit and credit columns, signed values, and multi-format statements parsed and normalized with 100% math accuracy.',
+      peaceOfMindDetail: 'Dynamically synthesizes target budgets, recurring subscriptions, and client information directly from any uploaded statement PDF.',
+      technicalMetric: 'Universal PDF & Document Parsing Verified'
     },
     {
       id: 'sec-6',

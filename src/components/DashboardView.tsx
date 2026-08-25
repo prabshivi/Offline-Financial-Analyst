@@ -222,15 +222,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }, [filteredTransactions, drilldownCategory]);
 
   const theme = profile?.customUITheme || {
-    dashboardTitle: "Zack's Doghouse Overview",
-    dashboardSubtitle: "Real-time treat stats parsed offline by Zack's guard patrol",
-    outflowMetricLabel: "Treats Eaten (Expenses)",
-    inflowMetricLabel: "Bones Fetched (Income)",
-    netCashflowLabel: "Buried Bones (Savings)",
+    dashboardTitle: "Financial Intelligence Overview",
+    dashboardSubtitle: "Live financial telemetry and analytics parsed from your statements",
+    outflowMetricLabel: "Total Living Expenses",
+    inflowMetricLabel: "Net Income & Inflows",
+    netCashflowLabel: "Monthly Net Savings",
     subscriptionTabLabel: "Recurring Subscriptions",
-    recurringMetricLabel: "Fixed Charges Drain",
-    budgetTabLabel: "Food Bowl Budgets",
-    ledgerTabLabel: "Chewed Records Ledger",
+    recurringMetricLabel: "Fixed Monthly Drain",
+    budgetTabLabel: "Monthly Target Budgets",
+    ledgerTabLabel: "Financial Ledger",
     recommendationTitle: "Financial Health Signals",
     personaBadge: "Personal Vault",
     accountBadge: "Checking Account",
@@ -256,17 +256,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div>
           <div className="flex flex-wrap items-center gap-2.5">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-              🐕 {theme.dashboardTitle}
+              <TrendingUp className="w-5 h-5 text-emerald-500" />
+              {profile?.accountHolder ? `${profile.accountHolder}'s Overview` : theme.dashboardTitle}
             </h2>
-            
-            <div 
-              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/50 border border-amber-200/80 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-mono font-medium"
-              title={`Zack's Financial Stance: ${zackState.archetypeLabel} (${zackState.unlockedCount}/${zackState.totalMilestones} Milestones)`}
-            >
-              <span>🐕</span>
-              <span className="font-bold">{zackState.archetypeBadge}</span>
-              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">• {zackState.excitementLevel}% Excitement</span>
-            </div>
 
             {/* AI Statement Profile Badges */}
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 font-mono">
@@ -557,7 +549,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div>
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                <PieChartIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Treat Distribution by Category
+                <PieChartIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Expenses by Category
               </h3>
               <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
                 Click any slice to inspect
@@ -668,10 +660,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Canine Cash Flow (Monthly Trends)
+                <BarChart3 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Monthly Cash Flow Trends
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Compare monthly bones fetched vs treats eaten
+                Compare monthly income and expenses
               </p>
             </div>
 
@@ -733,14 +725,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   />
                   <Bar 
                     dataKey="inflow" 
-                    name="Bones Fetched" 
+                    name="Income / Inflows" 
                     fill="#10B981" 
                     radius={[6, 6, 0, 0]} 
                     maxBarSize={36} 
                   />
                   <Bar 
                     dataKey="outflow" 
-                    name="Treats Eaten" 
+                    name="Expenses / Outflows" 
                     fill={isDarkMode ? '#94A3B8' : '#64748B'} 
                     radius={[6, 6, 0, 0]} 
                     maxBarSize={36} 
@@ -784,7 +776,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             <button
               onClick={() => setDrilldownCategory(null)}
-              className="text-xs font-semibold text-slate-500 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-transparent dark:border-slate-700"
+              className="text-xs font-semibold text-slate-500 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-transparent dark:border-slate-700 cursor-pointer"
             >
               Clear Filter &times;
             </button>
@@ -830,9 +822,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="lg:col-span-5 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-4 transition-colors">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-              <ShoppingBag className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Top Treat Suppliers
+              <ShoppingBag className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Top Merchants
             </h3>
-            <span className="text-xs text-slate-400 dark:text-slate-500">By total treats consumed</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">By total spend</span>
           </div>
 
           <div className="space-y-3">
@@ -880,11 +872,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="lg:col-span-7 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-4 transition-colors">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Recent Scent Trails
+              <Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Recent Transactions
             </h3>
             <button
               onClick={() => onNavigate('ledger')}
-              className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1"
+              className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
             >
               <span>View All ({transactions.length})</span>
               <ChevronRight className="w-3.5 h-3.5" />
