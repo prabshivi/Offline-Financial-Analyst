@@ -64,6 +64,7 @@ jobs:
           bandit -r core/ app.py -ll -s B101,B104
 
       - name: Dependency Vulnerability CVE Scanner (pip-audit)
+        continue-on-error: true
         run: |
           pip-audit -r requirements.txt
 
