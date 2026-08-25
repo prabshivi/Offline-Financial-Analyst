@@ -9,10 +9,17 @@ Universal Multi-Bank Statement Ingestion Engine.
 
 import io
 import re
+import csv
+import math
 import hashlib
 import datetime
 from typing import List, Dict, Any, Tuple, Optional
-import pandas as pd
+
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
+
 from .security import PIISanitizer, InputValidator
 from .rules import RuleEngine
 
@@ -92,16 +99,34 @@ class StatementParser:
         rules: RuleEngine
     ) -> Dict[str, Any]:
         """Parses CSV with auto-detection of delimiters and bank column formats."""
-        try:
-            df = pd.read_csv(io.BytesIO(file_bytes), skipinitialspace=True)
-        except Exception:
-            df = pd.read_csv(io.BytesIO(file_bytes), sep=";", skipinitialspace=True)
+        rows_data = []
+        columns = []
 
-        df.columns = [str(c).strip() for c in df.columns]
-        cols_lower = {c.lower(): c for c in df.columns}
+        if pd is not None:
+            try:
+                df = pd.read_csv(io.BytesIO(file_bytes), skipinitialspace=True)
+            except Exception:
+                df = pd.read_csv(io.BytesIO(file_bytes), sep=";", skipinitialspace=True)
+
+            df.columns = [str(c).strip() for c in df.columns]
+            columns = list(df.columns)
+            for _, r in df.iterrows():
+                rows_data.append(dict(r))
+        else:
+            # Pure Python CSV reader fallback
+            text = file_bytes.decode("utf-8", errors="replace")
+            delimiter = ";" if ";" in text.split("\n")[0] else ","
+            reader = csv.DictReader(io.StringIO(text), delimiter=delimiter, skipinitialspace=True)
+            if reader.fieldnames:
+                columns = [str(c).strip() for c in reader.fieldnames]
+            for row in reader:
+                clean_row = {str(k).strip(): v for k, v in row.items() if k is not None}
+                rows_data.append(clean_row)
+
+        cols_lower = {c.lower(): c for c in columns}
 
         # Detect institution and column mappings
-        institution = account.get("institution") or cls._detect_institution_from_columns(df.columns)
+        institution = account.get("institution") or cls._detect_institution_from_columns(columns)
         date_col = cls._find_matching_col(cols_lower, ["date", "transaction date", "posting date", "trans date", "date de transaction"])
         desc_col = cls._find_matching_col(cols_lower, ["description", "memo", "payee", "transaction", "details", "narrative", "libellé"])
         debit_col = cls._find_matching_col(cols_lower, ["debit", "withdrawal", "withdrawals", "outflow", "debits", "retrait"])
@@ -111,10 +136,10 @@ class StatementParser:
 
         if not date_col or (not desc_col and not amount_col):
             # Fallback: assume column 0=date, 1=desc, 2=amount
-            if len(df.columns) >= 3:
-                date_col = df.columns[0]
-                desc_col = df.columns[1]
-                amount_col = df.columns[2]
+            if len(columns) >= 3:
+                date_col = columns[0]
+                desc_col = columns[1]
+                amount_col = columns[2]
             else:
                 raise ValueError("Could not identify Date, Description, or Amount columns in CSV.")
 
@@ -122,31 +147,33 @@ class StatementParser:
         total_inflows = 0.0
         total_outflows = 0.0
 
-        for _, row in df.iterrows():
-            date_val = str(row[date_col]).strip() if pd.notna(row[date_col]) else None
+        for row in rows_data:
+            val_date = row.get(date_col)
+            date_val = str(val_date).strip() if (val_date is not None and str(val_date).lower() != "nan") else None
             parsed_date = cls._normalize_date(date_val)
             if not parsed_date:
                 continue
 
-            raw_desc = str(row[desc_col]).strip() if desc_col and pd.notna(row[desc_col]) else "CSV Transaction"
+            val_desc = row.get(desc_col)
+            raw_desc = str(val_desc).strip() if (desc_col and val_desc is not None and str(val_desc).lower() != "nan") else "CSV Transaction"
             clean_merch, category, is_transfer = rules.clean_and_categorize(raw_desc)
 
             inflow = 0.0
             outflow = 0.0
 
             if debit_col and credit_col:
-                d_val = cls._clean_currency_val(row[debit_col])
-                c_val = cls._clean_currency_val(row[credit_col])
+                d_val = cls._clean_currency_val(row.get(debit_col))
+                c_val = cls._clean_currency_val(row.get(credit_col))
                 outflow = abs(d_val) if d_val else 0.0
                 inflow = abs(c_val) if c_val else 0.0
             elif amount_col:
-                a_val = cls._clean_currency_val(row[amount_col])
+                a_val = cls._clean_currency_val(row.get(amount_col))
                 if a_val < 0:
                     outflow = abs(a_val)
                 else:
                     inflow = a_val
 
-            run_bal = cls._clean_currency_val(row[balance_col]) if balance_col and pd.notna(row[balance_col]) else None
+            run_bal = cls._clean_currency_val(row.get(balance_col)) if (balance_col and row.get(balance_col) is not None) else None
 
             total_inflows += inflow
             total_outflows += outflow
@@ -363,7 +390,7 @@ class StatementParser:
 
     @classmethod
     def _clean_currency_val(cls, val: Any) -> float:
-        if pd.isna(val) or val is None:
+        if val is None or (isinstance(val, float) and math.isnan(val)) or (pd is not None and pd.isna(val)):
             return 0.0
         s = str(val).replace("$", "").replace(",", "").replace("CAD", "").replace("USD", "").strip()
         # Handle trailing negative e.g. 50.00- or (50.00)

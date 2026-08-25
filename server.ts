@@ -118,30 +118,35 @@ async function startServer() {
       const isImage = fileType?.includes('image') || /\.(png|jpg|jpeg|webp)$/i.test(fileName || '');
       const isPdfOrImage = isPdf || isImage;
 
-      // If PDF or Image and GEMINI_API_KEY is available, use multimodal Gemini 3.7 Flash
+      // If PDF or Image and GEMINI_API_KEY is available, try multimodal Gemini models
       if (isPdfOrImage && base64Data && process.env.GEMINI_API_KEY) {
-        try {
-          const ai = new GoogleGenAI({
-            apiKey: process.env.GEMINI_API_KEY,
-            httpOptions: {
-              headers: {
-                'User-Agent': 'aistudio-build'
+        const modelsToTry = ['gemini-2.5-flash', 'gemini-3.7-flash'];
+        let aiSuccess = false;
+
+        for (const modelName of modelsToTry) {
+          if (aiSuccess) break;
+          try {
+            const ai = new GoogleGenAI({
+              apiKey: process.env.GEMINI_API_KEY,
+              httpOptions: {
+                headers: {
+                  'User-Agent': 'aistudio-build'
+                }
               }
-            }
-          });
+            });
 
-          let mimeType = fileType || (isPdf ? 'application/pdf' : 'image/png');
-          if (mimeType.includes('pdf')) mimeType = 'application/pdf';
-          else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) mimeType = 'image/jpeg';
-          else if (mimeType.includes('png')) mimeType = 'image/png';
-          else if (mimeType.includes('webp')) mimeType = 'image/webp';
+            let mimeType = fileType || (isPdf ? 'application/pdf' : 'image/png');
+            if (mimeType.includes('pdf')) mimeType = 'application/pdf';
+            else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) mimeType = 'image/jpeg';
+            else if (mimeType.includes('png')) mimeType = 'image/png';
+            else if (mimeType.includes('webp')) mimeType = 'image/webp';
 
-          const prompt = `You are a financial document parser. Extract all transaction rows from this bank statement, credit card statement, receipt, or invoice.
+            const prompt = `You are a financial document parser. Extract all transaction rows from this bank statement, credit card statement, receipt, or invoice.
 
 For each transaction, output a JSON object with:
-- "date": string in YYYY-MM-DD format (use current year 2026 if year is omitted)
+- "date": string in YYYY-MM-DD format (use current year or statement period year)
 - "raw_description": exact memo or description text from the statement
-- "clean_merchant": clean normalized merchant name (e.g. "Whole Foods", "Starbucks", "Uber", "Apple", "Costco", "Walmart", "Payroll", "Hydro")
+- "clean_merchant": clean normalized merchant name (e.g. "Whole Foods", "Starbucks", "Uber", "Apple", "Costco", "Walmart", "Payroll", "Nityo Infotech", "Amex")
 - "category": one of [Income, Groceries, Dining Out, Coffee & Drinks, Shopping, Transportation, Gas & Fuel, Entertainment & Subscriptions, Utilities & Bills, Rent & Housing, Health & Pharmacy, Fitness & Wellness, Travel & Lodging, Investments, Education, Miscellaneous]
 - "amount": number (negative for expenses/debits like -42.50, positive for income/deposits/credits like 3200.00)
 - "type": "outflow" for expenses/debits, "inflow" for deposits/credits
@@ -151,48 +156,50 @@ Also determine the statement type. At the top-level, include:
 
 Return a JSON object: { "statementType": "...", "transactions": [...] }`;
 
-          const response = await ai.models.generateContent({
-            model: 'gemini-3.7-flash',
-            contents: {
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: mimeType,
-                    data: base64Data
+            const response = await ai.models.generateContent({
+              model: modelName,
+              contents: {
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: mimeType,
+                      data: base64Data
+                    }
+                  },
+                  {
+                    text: prompt
                   }
-                },
-                {
-                  text: prompt
-                }
-              ]
-            },
-            config: {
-              responseMimeType: 'application/json'
-            }
-          });
+                ]
+              },
+              config: {
+                responseMimeType: 'application/json'
+              }
+            });
 
-          const rawJson = response.text;
-          if (rawJson) {
-            const parsed = JSON.parse(rawJson);
-            const aiStatementType: StatementType = parsed.statementType || 'unknown';
-            const parsedArray = Array.isArray(parsed) ? parsed : (parsed.transactions || []);
-            if (Array.isArray(parsedArray) && parsedArray.length > 0) {
-              const transactions = parsedArray.map((t: any) => ({
-                date: t.date || new Date().toISOString().split('T')[0],
-                institution: institution || 'Document Upload',
-                account_name: accountName || 'Imported Document Account',
-                raw_description: t.raw_description || t.description || 'Document Transaction',
-                clean_merchant: t.clean_merchant || t.raw_description || 'Merchant',
-                category: t.category || 'Miscellaneous',
-                amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0,
-                type: t.type || (t.amount >= 0 ? 'inflow' : 'outflow')
-              }));
-              res.json({ success: true, method: 'ai_gemini_multimodal', transactions, statementType: aiStatementType });
-              return;
+            const rawJson = response.text;
+            if (rawJson) {
+              const parsed = JSON.parse(rawJson);
+              const aiStatementType: StatementType = parsed.statementType || 'unknown';
+              const parsedArray = Array.isArray(parsed) ? parsed : (parsed.transactions || []);
+              if (Array.isArray(parsedArray) && parsedArray.length > 0) {
+                const transactions = parsedArray.map((t: any) => ({
+                  date: t.date || new Date().toISOString().split('T')[0],
+                  institution: institution || 'Document Upload',
+                  account_name: accountName || 'Imported Document Account',
+                  raw_description: t.raw_description || t.description || 'Document Transaction',
+                  clean_merchant: t.clean_merchant || t.raw_description || 'Merchant',
+                  category: t.category || 'Miscellaneous',
+                  amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0,
+                  type: t.type || (t.amount >= 0 ? 'inflow' : 'outflow')
+                }));
+                res.json({ success: true, method: `ai_${modelName}_multimodal`, transactions, statementType: aiStatementType });
+                aiSuccess = true;
+                return;
+              }
             }
+          } catch (aiErr: any) {
+            console.warn(`AI model ${modelName} parsing error, trying next fallback:`, aiErr.message || aiErr);
           }
-        } catch (aiErr: any) {
-          console.warn('AI document parsing error, falling back to pdf-parse:', aiErr.message);
         }
       }
 

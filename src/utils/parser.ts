@@ -309,60 +309,109 @@ function parseRawTextLines(
   const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const transactions: StagingTransaction[] = [];
 
-  const datePattern = /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\/\-]\d{2}[\/\-]\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})/i;
-  const amountPattern = /(-?\$?\s*\d+(?:,\d{3})*(?:\.\d{2})?|\(\$?\s*\d+(?:,\d{3})*(?:\.\d{2})?\))/;
+  // 1. Detect statement years if present (e.g., "December 23, 2022 to January 27, 2023")
+  const yearMatches = rawText.match(/\b(20\d{2})\b/g);
+  const detectedYears = yearMatches ? Array.from(new Set(yearMatches)) : [new Date().getFullYear().toString()];
+  const fallbackYear = detectedYears[detectedYears.length - 1] || new Date().getFullYear().toString();
+
+  // Pattern matching:
+  // Date pattern: YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, "Jan 03 2023", "03 Jan 2023", "03 Jan", "Jan 03", "14 Feb"
+  const dateWithYearPattern = /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}[\/\-]\d{2}[\/\-]\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})/i;
+  const dateShortPattern = /^(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2})\b/i;
+
+  let lastActiveDate = '';
 
   lines.forEach((line, idx) => {
-    // Skip headers or summary lines
-    if (/balance|statement period|page \d|account number/i.test(line) && !line.match(amountPattern)) {
+    // Skip summary / header lines that aren't individual transactions
+    if (/^(opening balance|closing balance|account summary|total deposits|total cheques|account activity details|date description)/i.test(line)) {
+      return;
+    }
+    if (/balance|statement period|page \d of \d|account number/i.test(line) && !line.match(/\d+\.\d{2}/)) {
       return;
     }
 
-    const dateMatch = line.match(datePattern);
-    const amountMatch = line.match(amountPattern);
+    let rawDate = '';
+    let lineWithoutDate = line;
 
-    if (dateMatch && amountMatch) {
-      const rawDate = dateMatch[0];
-      const parsedAmt = parseAmountString(amountMatch[0]);
+    const fullDateMatch = line.match(dateWithYearPattern);
+    const shortDateMatch = line.match(dateShortPattern);
 
-      let desc = line.replace(dateMatch[0], '').replace(amountMatch[0], '').trim();
-      desc = desc.replace(/^[-|:,\s]+/, '').replace(/[-|:,\s]+$/, '').trim();
+    if (fullDateMatch) {
+      rawDate = fullDateMatch[0];
+      lineWithoutDate = line.replace(fullDateMatch[0], '').trim();
+      lastActiveDate = rawDate;
+    } else if (shortDateMatch) {
+      rawDate = shortDateMatch[0];
+      lineWithoutDate = line.replace(shortDateMatch[0], '').trim();
+      lastActiveDate = rawDate;
+    } else if (lastActiveDate && /\d+\.\d{2}/.test(line) && !/^(opening|closing|total|page)/i.test(line)) {
+      // Inherit date from previous line in the same block
+      rawDate = lastActiveDate;
+    }
 
-      if (desc.length > 1 && !isNaN(parsedAmt) && parsedAmt !== 0) {
-        const scrubbedDesc = scrubPII(desc);
-        const formattedDate = normalizeDate(rawDate);
-        const amount = parsedAmt < 0 
-          ? parsedAmt 
-          : (line.toLowerCase().includes('deposit') || line.toLowerCase().includes('payroll') || line.toLowerCase().includes('credit') || line.toLowerCase().includes('refund') 
-              ? parsedAmt 
-              : -parsedAmt);
+    if (!rawDate) return;
 
-        const category = categorizeTransaction(scrubbedDesc);
-        const cleanMerchant = cleanMerchantName(scrubbedDesc);
-        const hashId = generateTransactionId(formattedDate, scrubbedDesc, amount, institution);
-        const isDuplicate = existingIds.has(hashId);
+    // Find all currency/amount values on the line (e.g., "100.00", "8,859.20 14,859.81")
+    const amountMatches = Array.from(lineWithoutDate.matchAll(/(-?\$?\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})|\(\$?\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})\))/g));
+    if (amountMatches.length === 0) return;
 
-        transactions.push({
-          tempId: `staging-txt-${Date.now()}-${idx}`,
-          id: hashId,
-          date: formattedDate,
-          institution: institution || 'Text Statement',
-          account_name: accountName || `${institution} Account`,
-          raw_description: scrubbedDesc,
-          clean_merchant: cleanMerchant,
-          category,
-          amount,
-          type: amount >= 0 ? 'inflow' : 'outflow',
-          isDuplicate
-        });
+    // If there are multiple amounts (e.g. Transaction Amount + Running Balance),
+    // the first amount is usually the transaction amount, or the one before the balance
+    let amountStr = amountMatches[0][0];
+    let parsedAmt = parseAmountString(amountStr);
+
+    // If there are two amounts (e.g., amount + running balance), strip the second amount (balance) from description
+    let desc = lineWithoutDate;
+    amountMatches.forEach((m) => {
+      desc = desc.replace(m[0], ' ');
+    });
+    desc = desc.replace(/^[-|:,\s]+/, '').replace(/[-|:,\s]+$/, '').replace(/\s{2,}/g, ' ').trim();
+
+    if (desc.length > 0 && !isNaN(parsedAmt) && parsedAmt !== 0) {
+      const scrubbedDesc = scrubPII(desc);
+      const formattedDate = normalizeDate(rawDate, fallbackYear, detectedYears);
+
+      // Inflow / Outflow classification heuristics
+      const lowerLine = line.toLowerCase();
+      const lowerDesc = desc.toLowerCase();
+      const isInflowKeyword = /deposit|payroll|credit|refund|account payable pmt|e-transfer cancel|salary|direct dep|interest/i.test(lowerLine);
+      const isOutflowKeyword = /payment|transfer sent|fee|bill pymt|withdrawal|purchase|atm|cash withdrawal|monthly fee|autopay|e-transfer sent/i.test(lowerLine);
+
+      let finalAmount = parsedAmt;
+      if (isInflowKeyword && !isOutflowKeyword) {
+        finalAmount = Math.abs(parsedAmt);
+      } else if (isOutflowKeyword) {
+        finalAmount = -Math.abs(parsedAmt);
+      } else if (parsedAmt > 0 && !isInflowKeyword) {
+        // Bank statements list debits as positive numbers under debit column; default expenses to negative
+        finalAmount = -parsedAmt;
       }
+
+      const category = categorizeTransaction(scrubbedDesc);
+      const cleanMerchant = cleanMerchantName(scrubbedDesc);
+      const hashId = generateTransactionId(formattedDate, scrubbedDesc, finalAmount, institution);
+      const isDuplicate = existingIds.has(hashId);
+
+      transactions.push({
+        tempId: `staging-txt-${Date.now()}-${idx}`,
+        id: hashId,
+        date: formattedDate,
+        institution: institution || 'Bank Statement',
+        account_name: accountName || `${institution} Account`,
+        raw_description: scrubbedDesc,
+        clean_merchant: cleanMerchant,
+        category,
+        amount: finalAmount,
+        type: finalAmount >= 0 ? 'inflow' : 'outflow',
+        isDuplicate
+      });
     }
   });
 
   return transactions;
 }
 
-function normalizeDate(raw: string): string {
+function normalizeDate(raw: string, fallbackYear?: string, contextYears?: string[]): string {
   if (!raw) return new Date().toISOString().split('T')[0];
   const trimmed = raw.trim();
 
@@ -372,6 +421,51 @@ function normalizeDate(raw: string): string {
   // YYYYMMDD
   if (/^\d{8}$/.test(trimmed)) {
     return `${trimmed.substring(0, 4)}-${trimmed.substring(4, 6)}-${trimmed.substring(6, 8)}`;
+  }
+
+  const monthMap: Record<string, string> = {
+    jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+  };
+
+  // Match "03 Jan" or "14 Feb" or "Jan 03" without year
+  const shortDateMatch1 = trimmed.match(/^(\d{1,2})\s+([A-Za-z]{3,9})$/);
+  if (shortDateMatch1) {
+    const day = shortDateMatch1[1].padStart(2, '0');
+    const monKey = shortDateMatch1[2].substring(0, 3).toLowerCase();
+    const month = monthMap[monKey] || '01';
+    const year = fallbackYear || (contextYears && contextYears[0]) || new Date().getFullYear().toString();
+    return `${year}-${month}-${day}`;
+  }
+
+  const shortDateMatch2 = trimmed.match(/^([A-Za-z]{3,9})\s+(\d{1,2})$/);
+  if (shortDateMatch2) {
+    const monKey = shortDateMatch2[1].substring(0, 3).toLowerCase();
+    const month = monthMap[monKey] || '01';
+    const day = shortDateMatch2[2].padStart(2, '0');
+    const year = fallbackYear || (contextYears && contextYears[0]) || new Date().getFullYear().toString();
+    return `${year}-${month}-${day}`;
+  }
+
+  // Match "03 Jan 2023" or "Jan 03, 2023"
+  const dateWithYear = trimmed.match(/^(\d{1,2})\s+([A-Za-z]{3,9}),?\s+(\d{2,4})$/);
+  if (dateWithYear) {
+    const day = dateWithYear[1].padStart(2, '0');
+    const monKey = dateWithYear[2].substring(0, 3).toLowerCase();
+    const month = monthMap[monKey] || '01';
+    let year = dateWithYear[3];
+    if (year.length === 2) year = `20${year}`;
+    return `${year}-${month}-${day}`;
+  }
+
+  const dateWithYear2 = trimmed.match(/^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{2,4})$/);
+  if (dateWithYear2) {
+    const monKey = dateWithYear2[1].substring(0, 3).toLowerCase();
+    const month = monthMap[monKey] || '01';
+    const day = dateWithYear2[2].padStart(2, '0');
+    let year = dateWithYear2[3];
+    if (year.length === 2) year = `20${year}`;
+    return `${year}-${month}-${day}`;
   }
 
   // MM/DD/YYYY or M/D/YY or DD/MM/YYYY

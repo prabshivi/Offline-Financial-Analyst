@@ -12,7 +12,50 @@ import json
 import uuid
 import datetime
 from typing import List, Dict, Any, Optional, Tuple
-import pandas as pd
+
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
+
+class _SimpleSeries:
+    def __init__(self, data):
+        self._data = [str(x) if x is not None else "" for x in data]
+
+    class _StrAccessor:
+        def __init__(self, data):
+            self._data = data
+
+        def contains(self, pattern: str, case: bool = True):
+            if not case:
+                pattern = pattern.lower()
+                return [pattern in x.lower() for x in self._data]
+            return [pattern in x for x in self._data]
+
+    @property
+    def str(self):
+        return self._StrAccessor(self._data)
+
+    def __iter__(self):
+        return iter(self._data)
+
+
+class _SimpleDataFrame:
+    def __init__(self, rows: List[Dict[str, Any]], columns: List[str]):
+        self._rows = rows
+        self._columns = columns
+
+    @property
+    def empty(self) -> bool:
+        return len(self._rows) == 0
+
+    def __getitem__(self, col: str):
+        data = [r.get(col) for r in self._rows]
+        return _SimpleSeries(data)
+
+    def to_dict(self, orient="records"):
+        return self._rows
+
 
 # Check for native SQLCipher engine availability
 HAS_SQLCIPHER = False
@@ -260,7 +303,7 @@ class EncryptedVaultDB:
         cursor.close()
         return inserted, duplicates
 
-    def get_transactions_df(self, filters: Optional[Dict[str, Any]] = None) -> pd.DataFrame:
+    def get_transactions_df(self, filters: Optional[Dict[str, Any]] = None) -> Any:
         """Retrieves transactions as a Pandas DataFrame with optional filtering."""
         query = """
             SELECT 
@@ -298,8 +341,16 @@ class EncryptedVaultDB:
                 query += " AND t.is_tax_deductible = 1"
 
         query += " ORDER BY t.date DESC, t.created_at DESC"
-        df = pd.read_sql_query(query, self.conn, params=params)
-        return df
+        if pd is not None:
+            df = pd.read_sql_query(query, self.conn, params=params)
+            return df
+        else:
+            cursor = self.conn.cursor()
+            cursor.execute(query, params)
+            cols = [col[0] for col in cursor.description]
+            rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+            cursor.close()
+            return _SimpleDataFrame(rows, cols)
 
     def update_transaction(self, tx_id: str, updates: Dict[str, Any]) -> bool:
         """Updates specific fields of a transaction record."""
