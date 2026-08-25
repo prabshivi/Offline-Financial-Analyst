@@ -16,7 +16,12 @@ import {
   ArrowRight,
   ShieldCheck,
   ShoppingBag,
-  CreditCard
+  CreditCard,
+  CalendarClock,
+  Clock,
+  RefreshCw,
+  Repeat,
+  CheckCircle2
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -31,14 +36,17 @@ import {
   CartesianGrid, 
   Legend 
 } from 'recharts';
-import { Transaction, VaultStats } from '../types';
+import { Transaction, VaultStats, AIStatementProfile } from '../types';
 import { STANDARD_CATEGORIES, getCategoryColor } from '../utils/categorizer';
 import { calculateZackFinancialMood } from '../utils/zackMoodEngine';
+import { detectRecurringSubscriptions } from '../utils/subscriptionDetector';
+import { getActiveStatementProfile } from '../utils/statementProfileManager';
 
 interface DashboardViewProps {
   transactions: Transaction[];
   stats: VaultStats | null;
   isDarkMode?: boolean;
+  statementProfile?: AIStatementProfile;
   onNavigate: (tab: string) => void;
   onOpenAddModal: () => void;
   onSeedSampleData: () => void;
@@ -51,6 +59,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   transactions,
   stats,
   isDarkMode = true,
+  statementProfile,
   onNavigate,
   onOpenAddModal,
   onSeedSampleData,
@@ -59,10 +68,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>('all');
   const [drilldownCategory, setDrilldownCategory] = useState<string | null>(null);
 
+  // Active statement profile (from prop or localStorage)
+  const profile = useMemo(() => {
+    return statementProfile || getActiveStatementProfile();
+  }, [statementProfile]);
+
   // Compute Zack's dynamic financial mood for the dashboard
   const zackState = useMemo(() => {
     return calculateZackFinancialMood(transactions, stats);
   }, [transactions, stats]);
+
+  // Compute detected recurring subscriptions
+  const { subscriptions: recurringSubs, summary: recurringSummary } = useMemo(() => {
+    let manualSubs: any[] = [];
+    try {
+      const saved = localStorage.getItem('vault_manual_subscriptions');
+      if (saved) manualSubs = JSON.parse(saved);
+    } catch {}
+    return detectRecurringSubscriptions(transactions, manualSubs);
+  }, [transactions]);
 
   // Compute date-filtered transactions for interactive period switcher
   const filteredTransactions = useMemo(() => {
@@ -174,10 +198,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     };
   }, [filteredTransactions]);
 
+  const currencyCode = profile?.currency || 'USD';
+
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
+      currency: currencyCode,
       maximumFractionDigits: 0
     }).format(val);
   };
@@ -195,15 +221,44 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return filteredTransactions.filter((t) => (t.amount < 0 || t.type === 'outflow') && t.category === drilldownCategory);
   }, [filteredTransactions, drilldownCategory]);
 
+  const theme = profile?.customUITheme || {
+    dashboardTitle: "Zack's Doghouse Overview",
+    dashboardSubtitle: "Real-time treat stats parsed offline by Zack's guard patrol",
+    outflowMetricLabel: "Treats Eaten (Expenses)",
+    inflowMetricLabel: "Bones Fetched (Income)",
+    netCashflowLabel: "Buried Bones (Savings)",
+    subscriptionTabLabel: "Recurring Subscriptions",
+    recurringMetricLabel: "Fixed Charges Drain",
+    budgetTabLabel: "Food Bowl Budgets",
+    ledgerTabLabel: "Chewed Records Ledger",
+    recommendationTitle: "Financial Health Signals",
+    personaBadge: "Personal Vault",
+    accountBadge: "Checking Account",
+    themeAccent: "cyan"
+  };
+
+  const sections = profile?.visibleSections || {
+    showBusinessMetrics: false,
+    showPersonalSavings: true,
+    showDebtSnowball: true,
+    showSubscriptionsTrimmer: true,
+    showForeignExchangeTracker: false,
+    showTaxDeductibleTracker: false,
+    showCategoryBudgetTracker: true,
+    showPayrollCashflowTracker: true,
+    showVendorBreakdown: false
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Top Banner with Interactive Timeframe Tabs */}
+      {/* Top Banner with Interactive Timeframe Tabs and Statement Profile Badges */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
         <div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-              🐕 Zack's Doghouse Overview
+              🐕 {theme.dashboardTitle}
             </h2>
+            
             <div 
               className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/50 border border-amber-200/80 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-mono font-medium"
               title={`Zack's Financial Stance: ${zackState.archetypeLabel} (${zackState.unlockedCount}/${zackState.totalMilestones} Milestones)`}
@@ -212,9 +267,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span className="font-bold">{zackState.archetypeBadge}</span>
               <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">• {zackState.excitementLevel}% Excitement</span>
             </div>
+
+            {/* AI Statement Profile Badges */}
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 font-mono">
+              {theme.personaBadge}
+            </span>
+
+            {profile?.institution && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60">
+                {profile.institution} {profile.accountNumberMasked ? `(${profile.accountNumberMasked})` : ''}
+              </span>
+            )}
+
+            {profile?.statementPeriod?.label && (
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                📅 {profile.statementPeriod.label}
+              </span>
+            )}
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Real-time treat stats parsed offline by Zack's guard patrol
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            {theme.dashboardSubtitle} &bull; Account: <span className="font-semibold text-slate-700 dark:text-slate-200">{profile?.accountHolder || 'Primary Vault Holder'}</span>
           </p>
         </div>
 
@@ -245,12 +317,47 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
+      {/* AI Statement Executive Summary Banner (Extracted from PDF statement) */}
+      {profile?.aiExecutiveSummary && (
+        <div className="p-5 rounded-3xl bg-gradient-to-r from-cyan-950/40 via-slate-900 to-indigo-950/30 border border-cyan-500/30 shadow-lg space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs">
+              <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
+              <span>AI Statement Vision Intelligence &bull; {profile.detectedPersona || 'Account Profile'}</span>
+            </div>
+            <button
+              onClick={() => onNavigate('ingestion')}
+              className="text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 self-start sm:self-auto underline"
+            >
+              Fetch & Analyze New PDF &rarr;
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-300 leading-relaxed">
+            {profile.aiExecutiveSummary}
+          </p>
+
+          {profile.suggestedActionItems && profile.suggestedActionItems.length > 0 && (
+            <div className="pt-2 border-t border-cyan-500/20 flex flex-wrap gap-2">
+              {profile.suggestedActionItems.map((item, idx) => (
+                <div key={idx} className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-cyan-950/60 border border-cyan-500/30 text-cyan-300 text-[11px] font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 4 Interactive Summary Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Inflow */}
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800/90 shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Bones Fetched (Income)</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              {theme.inflowMetricLabel}
+            </span>
             <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
               <TrendingUp className="w-5 h-5" />
             </div>
@@ -261,7 +368,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </p>
             <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 mt-1">
               <ArrowUpRight className="w-3.5 h-3.5" />
-              <span>Scent trails of incoming treats</span>
+              <span>Scent trails of incoming funds</span>
             </p>
           </div>
         </div>
@@ -269,7 +376,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Total Outflow */}
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800/90 shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Treats Eaten (Expenses)</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              {theme.outflowMetricLabel}
+            </span>
             <div className="w-9 h-9 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold">
               <TrendingDown className="w-5 h-5" />
             </div>
@@ -279,7 +388,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {formatCurrency(metrics.totalOutflow)}
             </p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1 mt-1">
-              <span>{metrics.categoryBreakdown.length} spending snack types</span>
+              <span>{metrics.categoryBreakdown.length} spending line categories</span>
             </p>
           </div>
         </div>
@@ -287,7 +396,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Net Savings */}
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800/90 shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Buried Bones (Savings)</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              {theme.netCashflowLabel}
+            </span>
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold ${
               metrics.netSavings >= 0 
                 ? 'bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300' 
@@ -305,7 +416,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <p className={`text-[11px] font-semibold mt-1 ${
               metrics.netSavings >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
             }`}>
-              {metrics.netSavings >= 0 ? 'Burying more than eating' : 'Eating faster than fetching'}
+              {metrics.netSavings >= 0 ? 'Positive net cashflow' : 'Deficit / burn rate alert'}
             </p>
           </div>
         </div>
@@ -313,7 +424,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Savings Rate */}
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800/90 shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Bone Storage Efficiency</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              {sections.showBusinessMetrics ? 'Operating Margin' : 'Storage Efficiency'}
+            </span>
             <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
               <PiggyBank className="w-5 h-5" />
             </div>
@@ -331,6 +444,111 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Business Statement Specialized Metrics (Visible only if statement is Business / Corporate) */}
+      {sections.showBusinessMetrics && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in">
+          <div className="p-4 rounded-2xl bg-violet-950/30 border border-violet-500/30 space-y-1">
+            <span className="text-[11px] font-semibold text-violet-400 uppercase">Estimated Tax Write-Offs</span>
+            <p className="text-xl font-bold font-mono text-white">
+              {formatCurrency(metrics.totalOutflow * 0.72)}
+            </p>
+            <p className="text-[10px] text-violet-300">Software, contractor, cloud & operations deductions</p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-1">
+            <span className="text-[11px] font-semibold text-indigo-400 uppercase">Monthly SaaS & Vendor Burn</span>
+            <p className="text-xl font-bold font-mono text-white">
+              {formatCurrency(recurringSummary.totalMonthlyCommitment)}
+            </p>
+            <p className="text-[10px] text-indigo-300">{recurringSummary.activeCount} commercial vendors identified</p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-cyan-950/30 border border-cyan-500/30 space-y-1">
+            <span className="text-[11px] font-semibold text-cyan-400 uppercase">Operating Cash Runway</span>
+            <p className="text-xl font-bold font-mono text-white">
+              {metrics.totalOutflow > 0 ? `${((metrics.totalInflow * 3.5) / metrics.totalOutflow).toFixed(1)} Months` : 'Infinite'}
+            </p>
+            <p className="text-[10px] text-cyan-300">Based on statement trailing cash flow</p>
+          </div>
+        </div>
+      )}
+
+      {/* Recurring Subscriptions & Fixed Commitments Quick Horizon Widget */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs transition-colors space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-cyan-500/10 dark:bg-cyan-500/20 text-cyan-500 flex items-center justify-center font-bold">
+              <CalendarClock className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                Recurring Subscriptions & Fixed Charges
+                {recurringSummary.upcomingCount7Days > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-500 border border-rose-500/30 animate-pulse">
+                    {recurringSummary.upcomingCount7Days} due this week
+                  </span>
+                )}
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Total monthly commitment: <span className="font-bold text-slate-900 dark:text-white font-mono">{formatCurrency(recurringSummary.totalMonthlyCommitment)}/mo</span> ({recurringSummary.activeCount} active subscriptions)
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => onNavigate('subscriptions')}
+            className="text-xs font-semibold text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 flex items-center gap-1 self-start sm:self-auto bg-cyan-50 dark:bg-cyan-950/50 border border-cyan-200/60 dark:border-cyan-800/60 px-3 py-1.5 rounded-xl transition-colors"
+          >
+            <span>Manage All Subscriptions & Renewals</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Horizontal Mini Cards of Upcoming Renewals */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
+          {recurringSubs.slice(0, 4).map((sub) => {
+            const isDueSoon = sub.daysUntilDue >= 0 && sub.daysUntilDue <= 7;
+            return (
+              <div
+                key={sub.id}
+                onClick={() => onNavigate('subscriptions')}
+                className={`p-3 rounded-2xl border transition-all cursor-pointer hover:border-cyan-500/60 ${
+                  isDueSoon
+                    ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40'
+                    : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200/60 dark:border-slate-700/60'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-slate-900 dark:text-white truncate max-w-[110px]">
+                    {sub.merchant}
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                    {sub.cadence === 'annual' ? 'Annual' : 'Monthly'}
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between mt-1.5">
+                  <span className="text-sm font-extrabold font-mono text-slate-900 dark:text-white">
+                    {formatCurrency(sub.lastAmount)}
+                  </span>
+                  <span className={`text-[10px] font-bold ${
+                    isDueSoon ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'
+                  }`}>
+                    {sub.daysUntilDue === 0 ? 'Due Today' : sub.daysUntilDue > 0 ? `In ${sub.daysUntilDue}d` : `${Math.abs(sub.daysUntilDue)}d ago`}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+
+          {recurringSubs.length === 0 && (
+            <div className="col-span-4 text-center py-3 text-xs text-slate-400 dark:text-slate-500">
+              No recurring subscriptions detected yet.
+            </div>
+          )}
+        </div>
+      </div>
+
 
       {/* Main Visuals Grid: Donut Breakdown + Monthly Cashflow Bar */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

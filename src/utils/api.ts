@@ -1,4 +1,4 @@
-import { Transaction, Rule, VaultHealth, AutoFetchStatus, StatementType } from '../types';
+import { Transaction, Rule, VaultHealth, AutoFetchStatus, StatementType, AIStatementProfile } from '../types';
 
 export const api = {
   async getHealth(): Promise<VaultHealth> {
@@ -135,7 +135,14 @@ export const api = {
     textContent?: string;
     institution?: string;
     accountName?: string;
-  }): Promise<{ success: boolean; method: string; transactions?: Partial<Transaction>[]; textToParse?: string; statementType?: StatementType }> {
+  }): Promise<{ 
+    success: boolean; 
+    method: string; 
+    transactions?: Partial<Transaction>[]; 
+    textToParse?: string; 
+    statementType?: StatementType;
+    statementProfile?: any;
+  }> {
     const res = await fetch('/api/documents/parse', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -143,6 +150,23 @@ export const api = {
     });
     if (!res.ok) {
       throw new Error('Document parsing failed');
+    }
+    return await res.json();
+  },
+
+  async aiSynthesizeStatementProfile(params: {
+    textContent?: string;
+    transactions?: Partial<Transaction>[];
+    fileName?: string;
+    institution?: string;
+  }): Promise<{ success: boolean; profile: any }> {
+    const res = await fetch('/api/statements/ai-synthesize-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    if (!res.ok) {
+      throw new Error('AI statement profile synthesis failed');
     }
     return await res.json();
   },

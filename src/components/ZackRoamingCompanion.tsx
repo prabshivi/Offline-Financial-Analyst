@@ -116,6 +116,7 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
     const tabReactions: Record<string, string> = {
       dashboard: `Overview loaded! Mood: ${financialState.archetypeLabel} 📊🐶`,
       budget: "Budgets ready! Sniffing out spending targets! 🦴💵",
+      subscriptions: "Recurring Subscriptions loaded! Sniffing out recurring drain & renewals! 🔄✂️",
       'debt-payoff': "Bone Burier Debt Suite ready! Let's eliminate balances! ⚡",
       ingestion: "Fetch Bank Statements ready! Let's ingest bank files! 📂✨",
       ledger: "Golden Ledger loaded! Scrutinizing every transaction! 🔍🐾",
@@ -338,7 +339,7 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
             onMouseEnter={() => setShowControls(true)}
             onMouseLeave={() => setShowControls(false)}
             whileHover={{ scale: 1.04, y: -2 }}
-            whileTap={{ scale: 0.94, rotate: [0, -2, 2, 0] }}
+            whileTap={{ scale: 0.94, rotate: -2 }}
             transition={{ type: "spring", stiffness: 400, damping: 17 }}
           >
             {/* 1. Receptive Speech Message Card - Positioned cleanly ABOVE the interaction control bar */}

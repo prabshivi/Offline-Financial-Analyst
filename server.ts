@@ -98,6 +98,65 @@ function ensureDropzoneDirs() {
   }
 }
 
+// Active supported models with cascade fallback for high demand/availability
+const SUPPORTED_GEMINI_MODELS = [
+  'gemini-3.7-flash',
+  'gemini-3.6-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-flash-latest'
+];
+
+async function callGeminiModelWithFallback(
+  params: {
+    contents: any;
+    config?: any;
+    preferredModels?: string[];
+  }
+): Promise<{ text: string; modelUsed: string }> {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY is not configured');
+  }
+
+  const ai = new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build'
+      }
+    }
+  });
+
+  const models = params.preferredModels || SUPPORTED_GEMINI_MODELS;
+  let lastError: any = null;
+
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i];
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: params.contents,
+        config: params.config
+      });
+
+      const text = response.text;
+      if (text) {
+        return { text, modelUsed: model };
+      }
+    } catch (err: any) {
+      lastError = err;
+      const status = err?.status || err?.code || err?.statusCode;
+      console.warn(`AI model ${model} parsing error, trying next fallback:`, err.message || err);
+      
+      // If temporary overload / rate limit / 503 / 429, brief backoff before trying next fallback model
+      if (status === 503 || status === 429 || status === 500) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
+  }
+
+  throw lastError || new Error('All Gemini model fallbacks exhausted');
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -110,7 +169,7 @@ async function startServer() {
 
   // --- API Endpoints ---
 
-  // Parse Document / Statement (PDF, Image, CSV, OFX, Text) with AI & regex fallback
+  // Parse Document / Statement (PDF, Image, CSV, OFX, Text) with deep Gemini AI & regex fallback
   app.post('/api/documents/parse', async (req, res) => {
     try {
       const { fileName, fileType, base64Data, textContent, institution, accountName } = req.body;
@@ -118,88 +177,152 @@ async function startServer() {
       const isImage = fileType?.includes('image') || /\.(png|jpg|jpeg|webp)$/i.test(fileName || '');
       const isPdfOrImage = isPdf || isImage;
 
-      // If PDF or Image and GEMINI_API_KEY is available, try multimodal Gemini models
+      // If PDF or Image and GEMINI_API_KEY is available, try multimodal Gemini models with cascading fallback
       if (isPdfOrImage && base64Data && process.env.GEMINI_API_KEY) {
-        const modelsToTry = ['gemini-2.5-flash', 'gemini-3.7-flash'];
-        let aiSuccess = false;
+        let mimeType = fileType || (isPdf ? 'application/pdf' : 'image/png');
+        if (mimeType.includes('pdf')) mimeType = 'application/pdf';
+        else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) mimeType = 'image/jpeg';
+        else if (mimeType.includes('png')) mimeType = 'image/png';
+        else if (mimeType.includes('webp')) mimeType = 'image/webp';
 
-        for (const modelName of modelsToTry) {
-          if (aiSuccess) break;
-          try {
-            const ai = new GoogleGenAI({
-              apiKey: process.env.GEMINI_API_KEY,
-              httpOptions: {
-                headers: {
-                  'User-Agent': 'aistudio-build'
-                }
-              }
-            });
+        const prompt = `You are an elite financial statement analyst and OCR engine. Analyze this bank/credit card/corporate PDF statement deeply.
+IMPORTANT PRIVACY DIRECTIVE: Do not extract or return full raw government identifiers (SSN/SIN) or full 16-digit credit card PAN numbers. Always mask any account numbers to their last 4 digits (e.g. "...9420").
 
-            let mimeType = fileType || (isPdf ? 'application/pdf' : 'image/png');
-            if (mimeType.includes('pdf')) mimeType = 'application/pdf';
-            else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) mimeType = 'image/jpeg';
-            else if (mimeType.includes('png')) mimeType = 'image/png';
-            else if (mimeType.includes('webp')) mimeType = 'image/webp';
+Extract ALL transactions and also construct a comprehensive financial statement profile to dynamically customize the user interface.
 
-            const prompt = `You are a financial document parser. Extract all transaction rows from this bank statement, credit card statement, receipt, or invoice.
+Return a valid JSON object with the following exact structure:
+{
+  "statementProfile": {
+    "accountHolder": "Name of the person or entity on statement (e.g. Alex Morgan, Apex Tech LLC)",
+    "entityName": "Company name if business/commercial statement, or null if individual",
+    "institution": "Bank name (e.g. Chase, RBC Royal Bank, TD Canada Trust, Silicon Valley Bank, Amex, Wells Fargo, BofA)",
+    "accountNumberMasked": "Masked account number like ...9420 or null",
+    "accountType": "checking" | "savings" | "credit_card" | "line_of_credit" | "investment" | "corporate_operating" | "unknown",
+    "statementType": "personal" | "business" | "freelance" | "investment" | "credit_card",
+    "statementPeriod": {
+      "startDate": "YYYY-MM-DD",
+      "endDate": "YYYY-MM-DD",
+      "label": "e.g. August 2026 or July 1 - July 31, 2026"
+    },
+    "openingBalance": 12450.00,
+    "closingBalance": 16120.45,
+    "totalInflows": 9718.42,
+    "totalOutflows": 6047.97,
+    "currency": "USD" | "CAD" | "EUR" | "GBP",
+    "detectedPersona": "e.g. Tech Professional / Software Engineer, Small Business Owner, Freelance Consultant, Student, Canadian Homeowner",
+    "detectedKeyMetrics": {
+      "primaryIncomeSource": "e.g. Tech Corp Direct Deposit Payroll, Stripe Merchant Invoices, Interac E-Transfer",
+      "averageMonthlyIncome": 9700.00,
+      "fixedExpenseRatio": 48,
+      "discretionaryRatio": 22,
+      "topExpenseCategory": "Rent & Housing" | "Software & Technology" | "Groceries",
+      "savingsRatePercentage": 37.8,
+      "taxDeductibleRatio": 90.0
+    },
+    "detectedSubscriptions": [
+      {
+        "merchant": "Netflix",
+        "amount": 22.99,
+        "cadence": "monthly" | "annual" | "weekly" | "quarterly",
+        "category": "Entertainment & Subscriptions" | "Software & Technology" | "Utilities & Bills",
+        "isEssential": false,
+        "cancellationTip": "Recent price hike detected. Consider standard plan.",
+        "confidence": 95
+      }
+    ],
+    "customUITheme": {
+      "dashboardTitle": "e.g. Personal Wealth & Cashflow Executive or Corporate Treasury & Operating Health",
+      "dashboardSubtitle": "Customized subtitle based on the account and institution",
+      "outflowMetricLabel": "e.g. Total Living Expenditures or Operating Outflows & COGS",
+      "inflowMetricLabel": "e.g. Net Payroll & Inflows or Client Revenues & Retainers",
+      "netCashflowLabel": "e.g. Monthly Net Savings or Net Operating Profit",
+      "subscriptionTabLabel": "e.g. Recurring Subscriptions & Fixed Drain or SaaS & Vendor Commitments",
+      "recurringMetricLabel": "e.g. Monthly Fixed Commitments or Monthly SaaS Drain",
+      "budgetTabLabel": "e.g. Personal Budget Envelopes or Department Operating Caps",
+      "ledgerTabLabel": "e.g. Personal Vault Ledger or Corporate General Ledger",
+      "recommendationTitle": "e.g. Personal Financial Health Signals or Enterprise Profit & Tax Signals",
+      "personaBadge": "e.g. Tech Professional Portfolio or Commercial B2B Entity",
+      "accountBadge": "e.g. Chase Sapphire (...9420)",
+      "themeAccent": "cyan" | "indigo" | "rose" | "emerald" | "amber"
+    },
+    "visibleSections": {
+      "showBusinessMetrics": boolean (true if business/commercial, false if personal),
+      "showPersonalSavings": boolean (true if personal, false if corporate),
+      "showDebtSnowball": boolean (true if personal/credit card, false if corporate),
+      "showSubscriptionsTrimmer": true,
+      "showForeignExchangeTracker": boolean (true if multi-currency or non-USD),
+      "showTaxDeductibleTracker": boolean (true if business/freelance),
+      "showCategoryBudgetTracker": true,
+      "showPayrollCashflowTracker": true,
+      "showVendorBreakdown": boolean (true if business/freelance)
+    },
+    "aiExecutiveSummary": "2-3 concise sentences analyzing the statement cashflow, top spending drains, and notable flags.",
+    "suggestedActionItems": [
+      "Key recommendation 1",
+      "Key recommendation 2",
+      "Key recommendation 3"
+    ]
+  },
+  "transactions": [
+    {
+      "date": "YYYY-MM-DD",
+      "raw_description": "exact description text",
+      "clean_merchant": "clean merchant name",
+      "category": "Income" | "Groceries" | "Dining Out" | "Coffee & Drinks" | "Shopping" | "Transportation" | "Gas & Fuel" | "Entertainment & Subscriptions" | "Utilities & Bills" | "Rent & Housing" | "Health & Pharmacy" | "Fitness & Wellness" | "Travel & Lodging" | "Investments" | "Software & Technology" | "Education" | "Miscellaneous",
+      "amount": number (negative for debit/expense, positive for credit/deposit),
+      "type": "outflow" | "inflow"
+    }
+  ]
+}`;
 
-For each transaction, output a JSON object with:
-- "date": string in YYYY-MM-DD format (use current year or statement period year)
-- "raw_description": exact memo or description text from the statement
-- "clean_merchant": clean normalized merchant name (e.g. "Whole Foods", "Starbucks", "Uber", "Apple", "Costco", "Walmart", "Payroll", "Nityo Infotech", "Amex")
-- "category": one of [Income, Groceries, Dining Out, Coffee & Drinks, Shopping, Transportation, Gas & Fuel, Entertainment & Subscriptions, Utilities & Bills, Rent & Housing, Health & Pharmacy, Fitness & Wellness, Travel & Lodging, Investments, Education, Miscellaneous]
-- "amount": number (negative for expenses/debits like -42.50, positive for income/deposits/credits like 3200.00)
-- "type": "outflow" for expenses/debits, "inflow" for deposits/credits
-
-Also determine the statement type. At the top-level, include:
-- "statementType": "personal" if this is a personal bank statement (individual checking, savings, credit card), or "business" if it is a business/corporate/incorporation statement, or "unknown" if unclear.
-
-Return a JSON object: { "statementType": "...", "transactions": [...] }`;
-
-            const response = await ai.models.generateContent({
-              model: modelName,
-              contents: {
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: mimeType,
-                      data: base64Data
-                    }
-                  },
-                  {
-                    text: prompt
+        try {
+          const { text: rawJson, modelUsed } = await callGeminiModelWithFallback({
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: mimeType,
+                    data: base64Data
                   }
-                ]
-              },
-              config: {
-                responseMimeType: 'application/json'
-              }
-            });
-
-            const rawJson = response.text;
-            if (rawJson) {
-              const parsed = JSON.parse(rawJson);
-              const aiStatementType: StatementType = parsed.statementType || 'unknown';
-              const parsedArray = Array.isArray(parsed) ? parsed : (parsed.transactions || []);
-              if (Array.isArray(parsedArray) && parsedArray.length > 0) {
-                const transactions = parsedArray.map((t: any) => ({
-                  date: t.date || new Date().toISOString().split('T')[0],
-                  institution: institution || 'Document Upload',
-                  account_name: accountName || 'Imported Document Account',
-                  raw_description: t.raw_description || t.description || 'Document Transaction',
-                  clean_merchant: t.clean_merchant || t.raw_description || 'Merchant',
-                  category: t.category || 'Miscellaneous',
-                  amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0,
-                  type: t.type || (t.amount >= 0 ? 'inflow' : 'outflow')
-                }));
-                res.json({ success: true, method: `ai_${modelName}_multimodal`, transactions, statementType: aiStatementType });
-                aiSuccess = true;
-                return;
-              }
+                },
+                {
+                  text: prompt
+                }
+              ]
+            },
+            config: {
+              responseMimeType: 'application/json'
             }
-          } catch (aiErr: any) {
-            console.warn(`AI model ${modelName} parsing error, trying next fallback:`, aiErr.message || aiErr);
+          });
+
+          if (rawJson) {
+            const parsed = JSON.parse(rawJson);
+            const aiStatementProfile = parsed.statementProfile || null;
+            const aiStatementType: StatementType = aiStatementProfile?.statementType || parsed.statementType || 'unknown';
+            const parsedArray = Array.isArray(parsed) ? parsed : (parsed.transactions || []);
+            if (Array.isArray(parsedArray) && parsedArray.length > 0) {
+              const transactions = parsedArray.map((t: any) => ({
+                date: t.date || new Date().toISOString().split('T')[0],
+                institution: institution || aiStatementProfile?.institution || 'Document Upload',
+                account_name: accountName || aiStatementProfile?.accountHolder || 'Imported Document Account',
+                raw_description: t.raw_description || t.description || 'Document Transaction',
+                clean_merchant: t.clean_merchant || t.raw_description || 'Merchant',
+                category: t.category || 'Miscellaneous',
+                amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount)) || 0,
+                type: t.type || (t.amount >= 0 ? 'inflow' : 'outflow')
+              }));
+              res.json({ 
+                success: true, 
+                method: `ai_${modelUsed}_multimodal`, 
+                transactions, 
+                statementType: aiStatementType,
+                statementProfile: aiStatementProfile 
+              });
+              return;
+            }
           }
+        } catch (aiErr: any) {
+          console.warn('AI multimodal parsing fallback:', aiErr.message || aiErr);
         }
       }
 
@@ -234,6 +357,134 @@ Return a JSON object: { "statementType": "...", "transactions": [...] }`;
 
       const statementType = detectStatementType(textToParse);
       res.json({ success: true, method: 'raw_text_ready', textToParse, statementType });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Dedicated AI Statement Profile Synthesis endpoint (can synthesize profile from parsed text or transactions)
+  app.post('/api/statements/ai-synthesize-profile', async (req, res) => {
+    try {
+      const { textContent, transactions, fileName, institution } = req.body;
+
+      if (process.env.GEMINI_API_KEY) {
+        try {
+          const ai = new GoogleGenAI({
+            apiKey: process.env.GEMINI_API_KEY,
+            httpOptions: {
+              headers: {
+                'User-Agent': 'aistudio-build'
+              }
+            }
+          });
+
+          const summaryContext = textContent 
+            ? textContent.slice(0, 8000) 
+            : JSON.stringify(transactions?.slice(0, 30) || []);
+
+          const prompt = `You are an AI financial statement intelligence system.
+Analyze the following bank/credit card/corporate financial statement context from file "${fileName || 'statement.pdf'}":
+${summaryContext}
+
+Generate a comprehensive AI financial statement profile to dynamically reconfigure the dashboard, tab visibility, custom labels, detected subscriptions, and executive summary.
+
+Return ONLY a JSON object matching this schema:
+{
+  "accountHolder": "Name of individual or company",
+  "entityName": "Entity name or null",
+  "institution": "${institution || 'Bank Name'}",
+  "accountNumberMasked": "...1234",
+  "accountType": "checking" | "savings" | "credit_card" | "line_of_credit" | "investment" | "corporate_operating",
+  "statementType": "personal" | "business" | "freelance" | "investment" | "credit_card",
+  "statementPeriod": { "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "label": "Month Year" },
+  "openingBalance": 10000,
+  "closingBalance": 12500,
+  "totalInflows": 5000,
+  "totalOutflows": 2500,
+  "currency": "USD" | "CAD" | "EUR" | "GBP",
+  "detectedPersona": "e.g. Software Engineer, B2B SaaS Agency, Canadian Homeowner",
+  "detectedKeyMetrics": {
+    "primaryIncomeSource": "e.g. Payroll Direct Deposit",
+    "averageMonthlyIncome": 5000,
+    "fixedExpenseRatio": 45,
+    "discretionaryRatio": 20,
+    "topExpenseCategory": "Rent & Housing",
+    "savingsRatePercentage": 35,
+    "taxDeductibleRatio": 10
+  },
+  "detectedSubscriptions": [
+    {
+      "merchant": "Netflix",
+      "amount": 22.99,
+      "cadence": "monthly",
+      "category": "Entertainment & Subscriptions",
+      "isEssential": false,
+      "cancellationTip": "Price hike detected",
+      "confidence": 95
+    }
+  ],
+  "customUITheme": {
+    "dashboardTitle": "e.g. Personal Wealth & Cashflow Executive",
+    "dashboardSubtitle": "Statement analysis for...",
+    "outflowMetricLabel": "Total Living Expenditures",
+    "inflowMetricLabel": "Net Payroll & Inflows",
+    "netCashflowLabel": "Monthly Net Savings",
+    "subscriptionTabLabel": "Recurring Subscriptions",
+    "recurringMetricLabel": "Monthly Fixed Commitments",
+    "budgetTabLabel": "Personal Budget Envelopes",
+    "ledgerTabLabel": "Personal Vault Ledger",
+    "recommendationTitle": "Financial Health Signals",
+    "personaBadge": "Personal Account",
+    "accountBadge": "Checking (...1234)",
+    "themeAccent": "cyan"
+  },
+  "visibleSections": {
+    "showBusinessMetrics": false,
+    "showPersonalSavings": true,
+    "showDebtSnowball": true,
+    "showSubscriptionsTrimmer": true,
+    "showForeignExchangeTracker": false,
+    "showTaxDeductibleTracker": false,
+    "showCategoryBudgetTracker": true,
+    "showPayrollCashflowTracker": true,
+    "showVendorBreakdown": false
+  },
+  "aiExecutiveSummary": "Summary here...",
+  "suggestedActionItems": ["Action 1", "Action 2"]
+}`;
+
+          const { text } = await callGeminiModelWithFallback({
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json'
+            }
+          });
+
+          if (text) {
+            const profile = JSON.parse(text);
+            return res.json({ success: true, profile });
+          }
+        } catch (genErr: any) {
+          console.warn('AI statement profile synthesis failed:', genErr.message);
+        }
+      }
+
+      // Fallback heuristics if AI is offline
+      const isBusiness = fileName?.toLowerCase().includes('business') || fileName?.toLowerCase().includes('corp') || fileName?.toLowerCase().includes('agency');
+      const isCad = fileName?.toLowerCase().includes('rbc') || fileName?.toLowerCase().includes('td') || fileName?.toLowerCase().includes('canada');
+
+      res.json({
+        success: true,
+        profile: {
+          accountHolder: isBusiness ? 'Enterprise Corporation' : 'Primary Account Holder',
+          institution: institution || (isCad ? 'RBC Royal Bank Canada' : 'Chase Bank'),
+          accountType: isBusiness ? 'corporate_operating' : 'checking',
+          statementType: isBusiness ? 'business' : 'personal',
+          currency: isCad ? 'CAD' : 'USD',
+          detectedPersona: isBusiness ? 'Commercial B2B Enterprise' : 'Professional Account Holder',
+          aiExecutiveSummary: 'Heuristic profile synthesized from statement metadata and transaction volume.'
+        }
+      });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -289,14 +540,12 @@ Return a JSON object: { "statementType": "...", "transactions": [...] }`;
     // 2. PDF or Image with Gemini Multimodal AI (if API key is set)
     if ((isPdf || isImage) && process.env.GEMINI_API_KEY) {
       try {
-        const ai = new GoogleGenAI({
-          apiKey: process.env.GEMINI_API_KEY,
-          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-        });
         const mimeType = isPdf ? 'application/pdf' : (ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/png');
         const base64Data = buffer.toString('base64');
 
         const prompt = `Extract all transaction rows from this bank statement or document into a clean JSON array.
+PRIVACY DIRECTIVE: Never output full Social Security/SIN numbers or full credit card PANs. Replace card numbers with [CARD-****-last4].
+
 For each transaction:
 - "date": string in YYYY-MM-DD format (use year 2026 if year is not stated)
 - "raw_description": exact memo or description
@@ -307,8 +556,7 @@ For each transaction:
 
 Return a JSON array only.`;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.7-flash',
+        const { text: rawJson, modelUsed } = await callGeminiModelWithFallback({
           contents: {
             parts: [
               { inlineData: { mimeType, data: base64Data } },
@@ -318,7 +566,6 @@ Return a JSON array only.`;
           config: { responseMimeType: 'application/json' }
         });
 
-        const rawJson = response.text;
         if (rawJson) {
           const parsed = JSON.parse(rawJson);
           if (Array.isArray(parsed) && parsed.length > 0) {
@@ -336,7 +583,7 @@ Return a JSON array only.`;
                 type: t.type || ((Number(t.amount) || 0) >= 0 ? 'inflow' : 'outflow')
               };
             });
-            return { transactions: sanitized, method: 'gemini_multimodal_pdf' };
+            return { transactions: sanitized, method: `gemini_multimodal_${modelUsed}` };
           }
         }
       } catch (err: any) {
@@ -959,7 +1206,6 @@ Chequing,00192-991203,08/22/2026,,TTC METROPASS TRANSIT TORONTO,POS DEBIT,-156.0
         return;
       }
 
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const prompt = `You are a financial transaction categorizer. Categorize each transaction into one of these standard categories:
 Income, Groceries, Dining Out, Coffee & Drinks, Shopping, Transportation, Gas & Fuel, Entertainment & Subscriptions, Utilities & Bills, Rent & Housing, Health & Pharmacy, Fitness & Wellness, Travel & Lodging, Education, Investments, Miscellaneous.
 
@@ -971,15 +1217,13 @@ ${JSON.stringify(descriptions.slice(0, 50))}
 Return JSON matching this schema:
 Array of { "description": string, "category": string, "clean_merchant": string }`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+      const { text } = await callGeminiModelWithFallback({
         contents: prompt,
         config: {
           responseMimeType: 'application/json'
         }
       });
 
-      const text = response.text;
       if (text) {
         const parsed = JSON.parse(text);
         res.json({ categories: parsed });
@@ -1009,37 +1253,57 @@ Array of { "description": string, "category": string, "clean_merchant": string }
   app.post('/api/seed-sample-data', (req, res) => {
     try {
       const sampleData: Partial<TransactionRecord>[] = [
+        // August 2026 transactions
         { date: '2026-08-01', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'WHOLEFDS SOMA #10243 SAN FRANCISCO CA', clean_merchant: 'Whole Foods Market', category: 'Groceries', amount: -142.85, type: 'outflow', notes: 'Weekly groceries' },
         { date: '2026-08-01', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'UBER TRIP HELP.UBER.COM CA', clean_merchant: 'Uber', category: 'Transportation', amount: -28.40, type: 'outflow' },
         { date: '2026-08-02', institution: 'Chase', account_name: 'Chase Total Checking', raw_description: 'DIRECT DEP TECH CORP PAYROLL 883920', clean_merchant: 'Tech Corp Payroll', category: 'Income', amount: 4850.00, type: 'inflow', notes: 'Bi-weekly salary' },
         { date: '2026-08-03', institution: 'Amex', account_name: 'Amex Gold Card', raw_description: 'SWEETGREEN MISSION SAN FRANCISCO', clean_merchant: 'Sweetgreen', category: 'Dining Out', amount: -18.75, type: 'outflow' },
         { date: '2026-08-04', institution: 'Amex', account_name: 'Amex Gold Card', raw_description: 'BLUE BOTTLE COFFEE HAYES VALLEY', clean_merchant: 'Blue Bottle Coffee', category: 'Coffee & Drinks', amount: -7.50, type: 'outflow' },
-        { date: '2026-08-05', institution: 'Apple Card', account_name: 'Apple Card Goldman Sachs', raw_description: 'APPLE.COM/BILL 866-712-7753 CA', clean_merchant: 'Apple Services (iCloud + Music)', category: 'Entertainment & Subscriptions', amount: -14.99, type: 'outflow' },
+        { date: '2026-08-05', institution: 'Apple Card', account_name: 'Apple Card Goldman Sachs', raw_description: 'APPLE.COM/BILL 866-712-7753 CA', clean_merchant: 'Apple Services', category: 'Entertainment & Subscriptions', amount: -14.99, type: 'outflow' },
         { date: '2026-08-06', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'TRADER JOE 451 MARKET ST', clean_merchant: 'Trader Joe\'s', category: 'Groceries', amount: -86.30, type: 'outflow' },
-        { date: '2026-08-07', institution: 'Apple Card', account_name: 'Apple Card Goldman Sachs', raw_description: 'NETFLIX.COM LOS GATOS CA', clean_merchant: 'Netflix', category: 'Entertainment & Subscriptions', amount: -22.99, type: 'outflow' },
+        { date: '2026-08-07', institution: 'Apple Card', account_name: 'Apple Card Goldman Sachs', raw_description: 'NETFLIX.COM LOS GATOS CA', clean_merchant: 'Netflix', category: 'Entertainment & Subscriptions', amount: -22.99, type: 'outflow' }, // Price hike from 19.99
         { date: '2026-08-08', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'CHEVRON 0092304 SAN FRANCISCO CA', clean_merchant: 'Chevron', category: 'Gas & Fuel', amount: -58.20, type: 'outflow' },
         { date: '2026-08-09', institution: 'Amex', account_name: 'Amex Gold Card', raw_description: 'CHIPOTLE 1289 NEWARK CA', clean_merchant: 'Chipotle Mexican Grill', category: 'Dining Out', amount: -16.45, type: 'outflow' },
-        { date: '2026-08-10', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'AMZN Mktp US*2K4J299 Seattle WA', clean_merchant: 'Amazon', category: 'Shopping', amount: -64.12, type: 'outflow' },
+        { date: '2026-08-10', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'OPENAI *CHATGPT SUBSCRIPTION OPENAI.COM CA', clean_merchant: 'ChatGPT Plus', category: 'Software & Technology', amount: -20.00, type: 'outflow' },
         { date: '2026-08-11', institution: 'Chase', account_name: 'Chase Total Checking', raw_description: 'PG&E PACIFIC GAS & ELECTRIC EBILL', clean_merchant: 'PG&E', category: 'Utilities & Bills', amount: -135.40, type: 'outflow' },
-        { date: '2026-08-12', institution: 'Amex', account_name: 'Amex Platinum', raw_description: 'EQUINOX FITNESS CLUBS SAN FRANCISCO', clean_merchant: 'Equinox', category: 'Fitness & Wellness', amount: -280.00, type: 'outflow' },
+        { date: '2026-08-12', institution: 'Amex', account_name: 'Amex Platinum', raw_description: 'EQUINOX FITNESS CLUBS SAN FRANCISCO', clean_merchant: 'Equinox Fitness', category: 'Fitness & Wellness', amount: -280.00, type: 'outflow' },
         { date: '2026-08-14', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'CVS PHARMACY #9822 SAN FRANCISCO', clean_merchant: 'CVS Pharmacy', category: 'Health & Pharmacy', amount: -34.18, type: 'outflow' },
         { date: '2026-08-15', institution: 'Chase', account_name: 'Chase Total Checking', raw_description: 'DIRECT DEP TECH CORP PAYROLL 883920', clean_merchant: 'Tech Corp Payroll', category: 'Income', amount: 4850.00, type: 'inflow', notes: 'Bi-weekly salary' },
         { date: '2026-08-16', institution: 'Chase', account_name: 'Chase Total Checking', raw_description: 'FIDELITY BROKERAGE AUTOMATIC INVESTMENT', clean_merchant: 'Fidelity Investments', category: 'Investments', amount: -1000.00, type: 'outflow', notes: 'S&P 500 DCA' },
         { date: '2026-08-17', institution: 'Amex', account_name: 'Amex Gold Card', raw_description: 'STARBUCKS STORE 08442 SF', clean_merchant: 'Starbucks', category: 'Coffee & Drinks', amount: -6.85, type: 'outflow' },
         { date: '2026-08-18', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'TARGET T-0924 SAN FRANCISCO CA', clean_merchant: 'Target', category: 'Shopping', amount: -79.94, type: 'outflow' },
         { date: '2026-08-19', institution: 'Apple Card', account_name: 'Apple Card Goldman Sachs', raw_description: 'SPOTIFY USA NEW YORK NY', clean_merchant: 'Spotify', category: 'Entertainment & Subscriptions', amount: -11.99, type: 'outflow' },
-        { date: '2026-08-20', institution: 'Amex', account_name: 'Amex Gold Card', raw_description: 'DOORDASH*NOBU RESTAURANT SAN FRANCISCO', clean_merchant: 'Nobu (DoorDash)', category: 'Dining Out', amount: -94.50, type: 'outflow', notes: 'Date night' },
+        { date: '2026-08-20', institution: 'Amex', account_name: 'Amex Platinum', raw_description: 'AMAZON PRIME ANNUAL MEMBERSHIP SEATTLE WA', clean_merchant: 'Amazon Prime', category: 'Entertainment & Subscriptions', amount: -139.00, type: 'outflow', notes: 'Annual renewal' },
         { date: '2026-08-21', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'SAFEWAY #1490 MARINA BLVD SF', clean_merchant: 'Safeway', category: 'Groceries', amount: -62.10, type: 'outflow' },
         { date: '2026-08-22', institution: 'Chase', account_name: 'Chase Total Checking', raw_description: 'INTEREST PAYMENT CHASE SAVINGS', clean_merchant: 'Chase Bank Interest', category: 'Income', amount: 18.42, type: 'inflow' },
-        // Previous month data for trend charts
+        { date: '2026-08-23', institution: 'Amex', account_name: 'Amex Gold Card', raw_description: 'YOUTUBE PREMIUM GOOGLE*SERVICES CA', clean_merchant: 'YouTube Premium', category: 'Entertainment & Subscriptions', amount: -13.99, type: 'outflow' },
+        { date: '2026-08-24', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'NYTIMES DIGITAL SUBSCRIPTION NEW YORK NY', clean_merchant: 'New York Times', category: 'Entertainment & Subscriptions', amount: -4.00, type: 'outflow' },
+
+        // July 2026 transactions (showing recurring cycle pattern)
         { date: '2026-07-02', institution: 'Chase', account_name: 'Chase Total Checking', raw_description: 'DIRECT DEP TECH CORP PAYROLL', clean_merchant: 'Tech Corp Payroll', category: 'Income', amount: 4850.00, type: 'inflow' },
-        { date: '2026-07-05', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'WHOLEFDS MARKET SF', clean_merchant: 'Whole Foods Market', category: 'Groceries', amount: -210.40, type: 'outflow' },
-        { date: '2026-07-12', institution: 'Amex', account_name: 'Amex Gold Card', raw_description: 'AIRBNB HM492823 LAKE TAHOE', clean_merchant: 'Airbnb', category: 'Travel & Lodging', amount: -650.00, type: 'outflow' },
+        { date: '2026-07-05', institution: 'Apple Card', account_name: 'Apple Card Goldman Sachs', raw_description: 'APPLE.COM/BILL 866-712-7753 CA', clean_merchant: 'Apple Services', category: 'Entertainment & Subscriptions', amount: -14.99, type: 'outflow' },
+        { date: '2026-07-07', institution: 'Apple Card', account_name: 'Apple Card Goldman Sachs', raw_description: 'NETFLIX.COM LOS GATOS CA', clean_merchant: 'Netflix', category: 'Entertainment & Subscriptions', amount: -19.99, type: 'outflow' }, // Earlier lower price
+        { date: '2026-07-10', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'OPENAI *CHATGPT SUBSCRIPTION OPENAI.COM CA', clean_merchant: 'ChatGPT Plus', category: 'Software & Technology', amount: -20.00, type: 'outflow' },
+        { date: '2026-07-11', institution: 'Chase', account_name: 'Chase Total Checking', raw_description: 'PG&E PACIFIC GAS & ELECTRIC EBILL', clean_merchant: 'PG&E', category: 'Utilities & Bills', amount: -128.50, type: 'outflow' },
+        { date: '2026-07-12', institution: 'Amex', account_name: 'Amex Platinum', raw_description: 'EQUINOX FITNESS CLUBS SAN FRANCISCO', clean_merchant: 'Equinox Fitness', category: 'Fitness & Wellness', amount: -280.00, type: 'outflow' },
         { date: '2026-07-15', institution: 'Chase', account_name: 'Chase Total Checking', raw_description: 'DIRECT DEP TECH CORP PAYROLL', clean_merchant: 'Tech Corp Payroll', category: 'Income', amount: 4850.00, type: 'inflow' },
+        { date: '2026-07-19', institution: 'Apple Card', account_name: 'Apple Card Goldman Sachs', raw_description: 'SPOTIFY USA NEW YORK NY', clean_merchant: 'Spotify', category: 'Entertainment & Subscriptions', amount: -11.99, type: 'outflow' },
         { date: '2026-07-20', institution: 'Chase', account_name: 'Chase Total Checking', raw_description: 'RENT PAYMENT LUXURY APTS PROPERTY', clean_merchant: 'Property Management', category: 'Rent & Housing', amount: -2400.00, type: 'outflow' },
+        { date: '2026-07-23', institution: 'Amex', account_name: 'Amex Gold Card', raw_description: 'YOUTUBE PREMIUM GOOGLE*SERVICES CA', clean_merchant: 'YouTube Premium', category: 'Entertainment & Subscriptions', amount: -13.99, type: 'outflow' },
+        { date: '2026-07-24', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'NYTIMES DIGITAL SUBSCRIPTION NEW YORK NY', clean_merchant: 'New York Times', category: 'Entertainment & Subscriptions', amount: -4.00, type: 'outflow' },
+
+        // June 2026 transactions (establishing 3-cycle recurring cadence)
         { date: '2026-06-02', institution: 'Chase', account_name: 'Chase Total Checking', raw_description: 'DIRECT DEP TECH CORP PAYROLL', clean_merchant: 'Tech Corp Payroll', category: 'Income', amount: 4850.00, type: 'inflow' },
+        { date: '2026-06-05', institution: 'Apple Card', account_name: 'Apple Card Goldman Sachs', raw_description: 'APPLE.COM/BILL 866-712-7753 CA', clean_merchant: 'Apple Services', category: 'Entertainment & Subscriptions', amount: -14.99, type: 'outflow' },
+        { date: '2026-06-07', institution: 'Apple Card', account_name: 'Apple Card Goldman Sachs', raw_description: 'NETFLIX.COM LOS GATOS CA', clean_merchant: 'Netflix', category: 'Entertainment & Subscriptions', amount: -19.99, type: 'outflow' },
+        { date: '2026-06-10', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'OPENAI *CHATGPT SUBSCRIPTION OPENAI.COM CA', clean_merchant: 'ChatGPT Plus', category: 'Software & Technology', amount: -20.00, type: 'outflow' },
+        { date: '2026-06-11', institution: 'Chase', account_name: 'Chase Total Checking', raw_description: 'PG&E PACIFIC GAS & ELECTRIC EBILL', clean_merchant: 'PG&E', category: 'Utilities & Bills', amount: -121.10, type: 'outflow' },
+        { date: '2026-06-12', institution: 'Amex', account_name: 'Amex Platinum', raw_description: 'EQUINOX FITNESS CLUBS SAN FRANCISCO', clean_merchant: 'Equinox Fitness', category: 'Fitness & Wellness', amount: -280.00, type: 'outflow' },
         { date: '2026-06-15', institution: 'Chase', account_name: 'Chase Total Checking', raw_description: 'DIRECT DEP TECH CORP PAYROLL', clean_merchant: 'Tech Corp Payroll', category: 'Income', amount: 4850.00, type: 'inflow' },
         { date: '2026-06-18', institution: 'Chase', account_name: 'Chase Total Checking', raw_description: 'RENT PAYMENT LUXURY APTS PROPERTY', clean_merchant: 'Property Management', category: 'Rent & Housing', amount: -2400.00, type: 'outflow' },
+        { date: '2026-06-19', institution: 'Apple Card', account_name: 'Apple Card Goldman Sachs', raw_description: 'SPOTIFY USA NEW YORK NY', clean_merchant: 'Spotify', category: 'Entertainment & Subscriptions', amount: -11.99, type: 'outflow' },
+        { date: '2026-06-23', institution: 'Amex', account_name: 'Amex Gold Card', raw_description: 'YOUTUBE PREMIUM GOOGLE*SERVICES CA', clean_merchant: 'YouTube Premium', category: 'Entertainment & Subscriptions', amount: -13.99, type: 'outflow' },
+        { date: '2026-06-24', institution: 'Chase', account_name: 'Chase Sapphire Reserve', raw_description: 'NYTIMES DIGITAL SUBSCRIPTION NEW YORK NY', clean_merchant: 'New York Times', category: 'Entertainment & Subscriptions', amount: -4.00, type: 'outflow' },
         { date: '2026-06-25', institution: 'Amex', account_name: 'Amex Platinum', raw_description: 'DELTA AIR LINES 00623910 ATLANTA', clean_merchant: 'Delta Air Lines', category: 'Travel & Lodging', amount: -480.20, type: 'outflow' }
       ];
 

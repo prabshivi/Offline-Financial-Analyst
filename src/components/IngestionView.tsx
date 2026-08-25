@@ -31,14 +31,16 @@ import { StagingTransaction, InstitutionType, Transaction, StatementType } from 
 import { parseStatementFile, generateSampleStatement } from '../utils/parser';
 import { STANDARD_CATEGORIES, cleanMerchantName, generateTransactionId } from '../utils/categorizer';
 import { scrubPII } from '../utils/security';
+import { sanitizeFinancialText } from '../utils/piiSanitizer';
 import { api } from '../utils/api';
 
 
-import { AutoFetchStatus, AutoFetchLog } from '../types';
+import { AutoFetchStatus, AutoFetchLog, AIStatementProfile } from '../types';
 
 interface IngestionViewProps {
   existingTransactions: Transaction[];
   isDarkMode?: boolean;
+  statementProfile?: AIStatementProfile;
   onCommitTransactions: (staging: StagingTransaction[]) => Promise<{ inserted: number; duplicates: number }>;
   onNavigate: (tab: string) => void;
   onRefreshAllData: () => Promise<void>;
@@ -60,6 +62,7 @@ const BANK_PRESETS: { id: string; name: string; accountLabel: string; badge: str
 export const IngestionView: React.FC<IngestionViewProps> = ({
   existingTransactions,
   isDarkMode = true,
+  statementProfile,
   onCommitTransactions,
   onNavigate,
   onRefreshAllData
@@ -241,8 +244,10 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
 
           if (response.transactions && response.transactions.length > 0) {
             const staged: StagingTransaction[] = response.transactions.map((t, idx) => {
-              const scrubbedRaw = scrubPII(t.raw_description || 'Document Transaction');
-              const scrubbedClean = t.clean_merchant ? scrubPII(t.clean_merchant) : cleanMerchantName(scrubbedRaw);
+              const sanitizedRawResult = sanitizeFinancialText(t.raw_description || 'Document Transaction');
+              const scrubbedRaw = sanitizedRawResult.scrubbedText;
+              const cleanCandidate = t.clean_merchant || cleanMerchantName(scrubbedRaw);
+              const scrubbedClean = sanitizeFinancialText(cleanCandidate).scrubbedText;
               const hashId = t.id || generateTransactionId(t.date || '', scrubbedRaw, t.amount || 0, institution);
               return {
                 tempId: `staging-doc-${Date.now()}-${idx}`,
@@ -384,8 +389,8 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
       // Defense-in-depth: Ensure all fields are scrubbed of any PII before committing to storage
       const sanitizedStaging: StagingTransaction[] = stagingData.map((t) => ({
         ...t,
-        raw_description: scrubPII(t.raw_description),
-        clean_merchant: scrubPII(t.clean_merchant)
+        raw_description: sanitizeFinancialText(t.raw_description).scrubbedText,
+        clean_merchant: sanitizeFinancialText(t.clean_merchant).scrubbedText
       }));
       const result = await onCommitTransactions(sanitizedStaging);
       setCommitResult(result);

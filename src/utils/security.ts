@@ -91,7 +91,13 @@ export function scrubPII(text: string | null | undefined): string {
   // 7. Mask Email Addresses
   sanitized = sanitized.replace(PII_PATTERNS.email, '[REDACTED-EMAIL]');
 
-  // 8. Mask Standalone long account numbers (7 to 12 digits, but avoiding common merchant store IDs with #)
+  // 8. Mask Physical Street Addresses & Suite numbers
+  sanitized = sanitized.replace(/\b\d{1,5}\s+(?:[A-Za-z0-9.#-]+\s+){1,4}(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Drive|Dr|Lane|Ln|Way|Court|Ct|Circle|Cir|Highway|Hwy|Place|Pl|Suite|Ste|Apt|Unit)\b/gi, '[REDACTED-ADDRESS]');
+
+  // 9. Mask Postal / Zip Codes (Canadian A1A 1A1 or US 5-digit)
+  sanitized = sanitized.replace(/\b[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d\b|\b\d{5}(?:-\d{4})?\b/g, '[REDACTED-POSTAL]');
+
+  // 10. Mask Standalone long account numbers (7 to 12 digits, but avoiding common merchant store IDs with #)
   sanitized = sanitized.replace(/(^|\s)(\d{7,12})(\s|$)/g, '$1[REDACTED-ACCT]$3');
 
   // Collapse consecutive redaction tokens and spaces cleanly

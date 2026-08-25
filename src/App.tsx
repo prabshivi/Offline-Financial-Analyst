@@ -8,13 +8,17 @@ import { MasterLedgerView } from './components/MasterLedgerView';
 import { RulesEngineView } from './components/RulesEngineView';
 import { SecurityVaultView } from './components/SecurityVaultView';
 import { DebtPayoffView } from './components/DebtPayoffView';
+import { RecurringSubscriptionsView } from './components/RecurringSubscriptionsView';
+import { NightlyRunsView } from './components/NightlyRunsView';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { TransactionDetailModal } from './components/TransactionDetailModal';
 import { VaultLockScreen } from './components/VaultLockScreen';
 import { ZackRoamingCompanion } from './components/ZackRoamingCompanion';
-import { Transaction, Rule, VaultHealth, StagingTransaction, VaultStats } from './types';
+import { Transaction, Rule, VaultHealth, StagingTransaction, VaultStats, AIStatementProfile } from './types';
 import { api } from './utils/api';
 import { DEFAULT_RULES } from './utils/categorizer';
+import { getActiveStatementProfile } from './utils/statementProfileManager';
+import { getTabFromLocation, syncRouteToHistory } from './utils/router';
 
 export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -23,7 +27,9 @@ export default function App() {
     return 'dark'; // Default to dark mode
   });
 
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  // Multi-page routing: initialize active tab directly from browser location/path
+  const [activeTab, setActiveTab] = useState<string>(() => getTabFromLocation());
+  const [statementProfile, setStatementProfile] = useState<AIStatementProfile>(() => getActiveStatementProfile());
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [rules, setRules] = useState<Rule[]>(DEFAULT_RULES);
   const [health, setHealth] = useState<VaultHealth | null>(null);
@@ -36,6 +42,30 @@ export default function App() {
   const [lastLoginTime, setLastLoginTime] = useState<string>(() => {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   });
+
+  // Seamless URL navigation handler that updates browser history
+  const handleNavigate = useCallback((tab: string) => {
+    setActiveTab(tab);
+    syncRouteToHistory(tab);
+  }, []);
+
+  // Listen to browser Back/Forward buttons (popstate) and hash changes
+  useEffect(() => {
+    const handlePopState = () => {
+      const tab = getTabFromLocation();
+      setActiveTab(tab);
+    };
+
+    // Sync initial route path on initial mount
+    syncRouteToHistory(activeTab);
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handlePopState);
+    };
+  }, []);
 
   // Derived vault statistics
   const vaultStats = useMemo<VaultStats>(() => {
@@ -118,6 +148,19 @@ export default function App() {
   useEffect(() => {
     loadVaultData();
   }, [loadVaultData]);
+
+  // Listen for AI Statement Profile updates from PDF ingestion or preset switches
+  useEffect(() => {
+    const handleProfileUpdate = () => {
+      setStatementProfile(getActiveStatementProfile());
+    };
+    window.addEventListener('vault:statement-profile-updated', handleProfileUpdate);
+    window.addEventListener('storage', handleProfileUpdate);
+    return () => {
+      window.removeEventListener('vault:statement-profile-updated', handleProfileUpdate);
+      window.removeEventListener('storage', handleProfileUpdate);
+    };
+  }, []);
 
   // Seed sample transactions if requested or initially empty on demo
   const handleSeedSampleData = async () => {
@@ -222,11 +265,12 @@ export default function App() {
         transactionCount={transactions.length}
         isVaultLocked={isVaultLocked}
         isDarkMode={isDarkMode}
+        activeTab={activeTab}
         onToggleTheme={toggleTheme}
         onToggleLock={() => setIsVaultLocked(!isVaultLocked)}
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onSeedSampleData={handleSeedSampleData}
-        onNavigate={(tab) => setActiveTab(tab)}
+        onNavigate={handleNavigate}
         isSeeding={isSeeding}
       />
 
@@ -254,11 +298,12 @@ export default function App() {
           {/* Navigation Sidebar - Only rendered when unlocked */}
           <SidebarNav
             activeTab={activeTab}
-            onSelectTab={(tab) => setActiveTab(tab)}
+            onSelectTab={handleNavigate}
             transactionCount={transactions.length}
             health={health}
             isVaultLocked={isVaultLocked}
             isDarkMode={isDarkMode}
+            statementProfile={statementProfile}
           />
 
           {/* Main Content Area */}
@@ -272,10 +317,10 @@ export default function App() {
                 </div>
                 <button
                   onClick={() => {
-                    setActiveTab('nightly');
+                    handleNavigate('nightly');
                     setLoginAuditToast(null);
                   }}
-                  className="px-3 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] whitespace-nowrap transition-all shadow-xs"
+                  className="px-3 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] whitespace-nowrap transition-all shadow-xs cursor-pointer"
                 >
                   View Peace of Mind Audit &rarr;
                 </button>
@@ -296,7 +341,8 @@ export default function App() {
                     transactions={transactions}
                     stats={vaultStats}
                     isDarkMode={isDarkMode}
-                    onNavigate={(tab) => setActiveTab(tab)}
+                    statementProfile={statementProfile}
+                    onNavigate={handleNavigate}
                     onOpenAddModal={() => setIsAddModalOpen(true)}
                     onSeedSampleData={handleSeedSampleData}
                     onOpenDetailModal={(tx) => setAuditTransaction(tx)}
@@ -307,7 +353,18 @@ export default function App() {
                 <BudgetTrackerView
                   transactions={transactions}
                   isDarkMode={isDarkMode}
-                  onNavigate={(tab) => setActiveTab(tab)}
+                  statementProfile={statementProfile}
+                  onNavigate={handleNavigate}
+                  onOpenDetailModal={(tx) => setAuditTransaction(tx)}
+                />
+              )}
+
+              {activeTab === 'subscriptions' && (
+                <RecurringSubscriptionsView
+                  transactions={transactions}
+                  isDarkMode={isDarkMode}
+                  statementProfile={statementProfile}
+                  onNavigate={handleNavigate}
                   onOpenDetailModal={(tx) => setAuditTransaction(tx)}
                 />
               )}
@@ -315,7 +372,7 @@ export default function App() {
               {activeTab === 'debt-payoff' && (
                 <DebtPayoffView
                   isDarkMode={isDarkMode}
-                  onNavigate={(tab) => setActiveTab(tab)}
+                  onNavigate={handleNavigate}
                 />
               )}
 
@@ -323,8 +380,9 @@ export default function App() {
                 <IngestionView
                   existingTransactions={transactions}
                   isDarkMode={isDarkMode}
+                  statementProfile={statementProfile}
                   onCommitTransactions={handleCommitTransactions}
-                  onNavigate={(tab) => setActiveTab(tab)}
+                  onNavigate={handleNavigate}
                   onRefreshAllData={loadVaultData}
                 />
               )}
@@ -333,6 +391,7 @@ export default function App() {
                 <MasterLedgerView
                   transactions={transactions}
                   isDarkMode={isDarkMode}
+                  statementProfile={statementProfile}
                   onUpdateTransaction={handleUpdateTransaction}
                   onDeleteTransaction={handleDeleteTransaction}
                   onBulkDelete={handleBulkDelete}
@@ -362,6 +421,14 @@ export default function App() {
                   onImportData={handleImportData}
                   onSeedSampleData={handleSeedSampleData}
                   isSeeding={isSeeding}
+                />
+              )}
+
+              {activeTab === 'nightly' && (
+                <NightlyRunsView
+                  isDarkMode={isDarkMode}
+                  onNavigate={handleNavigate}
+                  lastLoginTime={lastLoginTime}
                 />
               )}
             </>
@@ -395,7 +462,7 @@ export default function App() {
         transactions={transactions}
         stats={vaultStats}
         health={health}
-        onNavigate={(tab) => setActiveTab(tab)}
+        onNavigate={handleNavigate}
       />
     </div>
   );

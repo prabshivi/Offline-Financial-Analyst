@@ -181,5 +181,134 @@ export interface DebtPayoffPlanResult {
   milestones: DebtPayoffMilestone[];
 }
 
-export type StatementType = 'personal' | 'business' | 'unknown';
+export type StatementType = 'personal' | 'business' | 'freelance' | 'investment' | 'credit_card' | 'mixed' | 'unknown';
+
+export interface AIDetectedSubscription {
+  merchant: string;
+  amount: number;
+  cadence: SubscriptionCadence;
+  category: string;
+  isEssential: boolean;
+  cancellationTip?: string;
+  confidence: number;
+}
+
+export interface StatementVisibleSections {
+  showBusinessMetrics: boolean;
+  showPersonalSavings: boolean;
+  showDebtSnowball: boolean;
+  showSubscriptionsTrimmer: boolean;
+  showForeignExchangeTracker: boolean;
+  showTaxDeductibleTracker: boolean;
+  showCategoryBudgetTracker: boolean;
+  showPayrollCashflowTracker: boolean;
+  showVendorBreakdown?: boolean;
+}
+
+export interface StatementCustomUITheme {
+  dashboardTitle: string;
+  dashboardSubtitle: string;
+  outflowMetricLabel: string;
+  inflowMetricLabel: string;
+  netCashflowLabel: string;
+  subscriptionTabLabel: string;
+  recurringMetricLabel: string;
+  budgetTabLabel: string;
+  ledgerTabLabel: string;
+  recommendationTitle: string;
+  personaBadge: string;
+  accountBadge: string;
+  themeAccent: 'cyan' | 'emerald' | 'indigo' | 'amber' | 'purple' | 'rose';
+}
+
+export interface AIStatementProfile {
+  id: string;
+  fileName: string;
+  uploadedAt: string;
+  accountHolder: string;
+  entityName?: string;
+  statementType: StatementType;
+  institution: string;
+  accountNumberMasked?: string;
+  accountType: 'checking' | 'savings' | 'credit_card' | 'line_of_credit' | 'investment' | 'corporate_operating' | 'unknown';
+  statementPeriod?: {
+    startDate?: string;
+    endDate?: string;
+    label?: string;
+  };
+  openingBalance?: number;
+  closingBalance?: number;
+  totalInflows?: number;
+  totalOutflows?: number;
+  netCashflow?: number;
+  currency: string;
+  detectedPersona: string;
+  detectedKeyMetrics: {
+    primaryIncomeSource?: string;
+    averageMonthlyIncome?: number;
+    fixedExpenseRatio?: number;
+    discretionaryRatio?: number;
+    topExpenseCategory?: string;
+    savingsRatePercentage?: number;
+    taxDeductibleRatio?: number;
+    businessOperatingMargin?: number;
+  };
+  detectedSubscriptions: AIDetectedSubscription[];
+  customUITheme: StatementCustomUITheme;
+  visibleSections: StatementVisibleSections;
+  aiExecutiveSummary: string;
+  suggestedActionItems: string[];
+  rawTextPreview?: string;
+}
+
+export type SubscriptionCadence = 'monthly' | 'annual' | 'weekly' | 'bi_weekly' | 'quarterly' | 'semi_annual';
+
+export type SubscriptionStatus = 'active' | 'upcoming_soon' | 'price_hike' | 'overdue' | 'paused' | 'annual_renewal';
+
+export interface RecurringChargeOccurrence {
+  date: string;
+  amount: number;
+  raw_description: string;
+  institution: string;
+  transactionId: string;
+}
+
+export interface RecurringSubscription {
+  id: string;
+  merchant: string;
+  rawDescription: string;
+  category: string;
+  institution: string;
+  cadence: SubscriptionCadence;
+  averageAmount: number;
+  lastAmount: number;
+  previousAmount?: number;
+  priceDifference?: number;
+  hasPriceHike: boolean;
+  lastChargedDate: string;
+  nextDueDate: string;
+  daysUntilDue: number;
+  status: SubscriptionStatus;
+  annualCost: number;
+  monthlyCost: number;
+  confidenceScore: number;
+  detectionReason: string;
+  occurrences: RecurringChargeOccurrence[];
+  isManual?: boolean;
+  isIgnored?: boolean;
+  color?: string;
+}
+
+export interface SubscriptionAuditSummary {
+  totalMonthlyCommitment: number;
+  totalAnnualCommitment: number;
+  activeCount: number;
+  upcomingCount7Days: number;
+  upcomingAmount7Days: number;
+  priceHikesCount: number;
+  highestSubscription: { merchant: string; amount: number; cadence: SubscriptionCadence } | null;
+  nextRenewal: { merchant: string; amount: number; nextDueDate: string; daysUntilDue: number } | null;
+  categoryBreakdown: { category: string; amount: number; percentage: number; count: number; color: string }[];
+  cadenceBreakdown: { cadence: SubscriptionCadence; label: string; count: number; monthlyEquivalent: number }[];
+}
 

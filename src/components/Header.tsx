@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   ShieldCheck, 
   Lock, 
@@ -12,15 +12,20 @@ import {
   FileSpreadsheet,
   CheckCircle2,
   Terminal,
-  Cpu
+  Cpu,
+  Globe,
+  Copy,
+  Check
 } from 'lucide-react';
 import { VaultHealth } from '../types';
+import { getRouteByTab, DOMAIN_NAME, getFullDomainUrl } from '../utils/router';
 
 interface HeaderProps {
   health: VaultHealth | null;
   transactionCount: number;
   isVaultLocked: boolean;
   isDarkMode?: boolean;
+  activeTab?: string;
   onToggleTheme?: () => void;
   onToggleLock: () => void;
   onOpenAddModal: () => void;
@@ -34,6 +39,7 @@ export const Header: React.FC<HeaderProps> = ({
   transactionCount,
   isVaultLocked,
   isDarkMode = true,
+  activeTab = 'dashboard',
   onToggleTheme,
   onToggleLock,
   onOpenAddModal,
@@ -41,6 +47,18 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigate,
   isSeeding
 }) => {
+  const [copied, setCopied] = useState(false);
+  const route = getRouteByTab(activeTab);
+
+  const handleCopyUrl = () => {
+    const fullUrl = getFullDomainUrl(activeTab);
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(fullUrl);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
   return (
     <header className="border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-xl sticky top-0 z-30 px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-4 transition-colors">
       {/* Brand & Status */}
@@ -68,10 +86,21 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </h1>
             
-            <span className="hidden lg:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
-              <ShieldCheck className="w-3 h-3 text-cyan-400" />
-              Air-Gapped Doghouse
-            </span>
+            {/* Domain Page URL Pill */}
+            <button
+              onClick={handleCopyUrl}
+              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-cyan-950/70 text-cyan-300 border border-cyan-500/40 hover:border-cyan-400/80 transition-all cursor-pointer shadow-xs group"
+              title={`Click to copy: ${DOMAIN_NAME}${route.canonicalPath}`}
+            >
+              <Globe className="w-3 h-3 text-cyan-400 group-hover:rotate-12 transition-transform" />
+              <span className="text-slate-400 hidden sm:inline">{DOMAIN_NAME}</span>
+              <span className="text-cyan-300 font-bold">{route.canonicalPath}</span>
+              {copied ? (
+                <Check className="w-3 h-3 text-emerald-400 ml-0.5 animate-in zoom-in-50" />
+              ) : (
+                <Copy className="w-3 h-3 text-cyan-400/70 group-hover:text-cyan-300 ml-0.5" />
+              )}
+            </button>
  
             <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
@@ -85,7 +114,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-slate-600">&bull;</span>
             <span className="text-slate-300 font-semibold">{transactionCount} Treats Buried</span>
             <span className="text-slate-600">&bull;</span>
-            <span className="text-slate-400 hidden md:inline">Duplicate Protection</span>
+            <span className="text-slate-400 hidden md:inline">{route.title}</span>
           </p>
         </div>
       </div>

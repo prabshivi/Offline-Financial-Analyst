@@ -28,9 +28,11 @@ import {
   evaluatePasswordStrength,
   updateMasterPassphrase,
   generateEmergencyRecoveryKey,
-  VAULT_AUTH_STORAGE
+  VAULT_AUTH_STORAGE,
+  scrubPII
 } from '../utils/security';
 import { cleanMerchantName } from '../utils/categorizer';
+import { sanitizeFinancialText, PIIScrubResult } from '../utils/piiSanitizer';
 interface SecurityVaultViewProps {
   health: VaultHealth | null;
   transactionCount: number;
@@ -69,19 +71,19 @@ export const SecurityVaultView: React.FC<SecurityVaultViewProps> = ({
   });
 
   // Interactive Live PII Sanitizer Sandbox
-  const [interactivePiiInput, setInteractivePiiInput] = useState('WHOLE FOODS #10294 ACCT 4500-1234-5678-9012 SIN 987-654-321');
+  const [interactivePiiInput, setInteractivePiiInput] = useState('WHOLE FOODS #10294 ACCT 4500-1234-5678-9012 SIN 987-654-321 123 Main St Apt 4B Toronto ON M5V 2T6');
   const [sanitizedOutput, setSanitizedOutput] = useState('');
-  const [maskedCount, setMaskedCount] = useState(2);
+  const [scrubResult, setScrubResult] = useState<PIIScrubResult>({
+    scrubbedText: '',
+    itemsRedactedCount: 0,
+    redactedTypes: []
+  });
 
   useEffect(() => {
     const raw = interactivePiiInput;
-    const sanitized = cleanMerchantName(raw);
-    setSanitizedOutput(sanitized);
-
-    // Count masked elements
-    const cardMatches = raw.match(/\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g) || [];
-    const sinMatches = raw.match(/\b\d{3}[- ]?\d{3}[- ]?\d{3}\b/g) || [];
-    setMaskedCount(cardMatches.length + sinMatches.length);
+    const result = sanitizeFinancialText(raw);
+    setScrubResult(result);
+    setSanitizedOutput(result.scrubbedText);
   }, [interactivePiiInput]);
 
   const securityChecklist = [
@@ -641,10 +643,11 @@ export const SecurityVaultView: React.FC<SecurityVaultViewProps> = ({
 
               <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
                 <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                  <span>Sanitized Merchant Memo:</span>
-                  {maskedCount > 0 && (
-                    <span className="text-emerald-400 font-bold font-mono text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10">
-                      Scrubbed {maskedCount} details
+                  <span>Sanitized Output:</span>
+                  {scrubResult.itemsRedactedCount > 0 && (
+                    <span className="text-emerald-400 font-bold font-mono text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 flex items-center gap-1">
+                      <span>Scrubbed {scrubResult.itemsRedactedCount} items</span>
+                      <span>({scrubResult.redactedTypes.join(', ')})</span>
                     </span>
                   )}
                 </div>

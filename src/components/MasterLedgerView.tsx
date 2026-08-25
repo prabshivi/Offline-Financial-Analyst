@@ -21,12 +21,14 @@ import {
   ArrowUpRight,
   ArrowDownRight
 } from 'lucide-react';
-import { Transaction } from '../types';
+import { Transaction, AIStatementProfile } from '../types';
 import { STANDARD_CATEGORIES, getCategoryColor } from '../utils/categorizer';
+import { getActiveStatementProfile } from '../utils/statementProfileManager';
 
 interface MasterLedgerViewProps {
   transactions: Transaction[];
   isDarkMode?: boolean;
+  statementProfile?: AIStatementProfile;
   onUpdateTransaction: (id: string, updates: Partial<Transaction>) => Promise<boolean>;
   onDeleteTransaction: (id: string) => Promise<boolean>;
   onBulkDelete: (ids: string[]) => Promise<number>;
@@ -37,12 +39,17 @@ interface MasterLedgerViewProps {
 export const MasterLedgerView: React.FC<MasterLedgerViewProps> = ({
   transactions,
   isDarkMode = true,
+  statementProfile,
   onUpdateTransaction,
   onDeleteTransaction,
   onBulkDelete,
   onOpenAddModal,
   onOpenDetailModal
 }) => {
+  const profile = useMemo(() => {
+    return statementProfile || getActiveStatementProfile();
+  }, [statementProfile]);
+
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedInstitution, setSelectedInstitution] = useState('all');
@@ -208,8 +215,12 @@ export const MasterLedgerView: React.FC<MasterLedgerViewProps> = ({
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD'
+      currency: profile?.currency || 'USD'
     }).format(val);
+  };
+
+  const theme = profile?.customUITheme || {
+    ledgerTabLabel: "Golden Ledger"
   };
 
   return (
@@ -217,11 +228,18 @@ export const MasterLedgerView: React.FC<MasterLedgerViewProps> = ({
       {/* Top Header Card with Actions */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-            <Receipt className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> Transaction Ledger
-          </h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              <Receipt className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> {theme.ledgerTabLabel || 'Transaction Ledger'}
+            </h2>
+            {profile?.detectedPersona && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
+                {profile.detectedPersona}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            View, search, categorize, and audit all stored records in your local database
+            View, search, categorize, and audit all stored records &bull; {profile?.institution || 'Offline Vault'}
           </p>
         </div>
 

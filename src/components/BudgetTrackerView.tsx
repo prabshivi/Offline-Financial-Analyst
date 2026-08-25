@@ -12,14 +12,20 @@ import {
   Calendar,
   Sparkles,
   ArrowRight,
-  Receipt
+  Receipt,
+  Globe,
+  Copy,
+  Check
 } from 'lucide-react';
-import { Transaction } from '../types';
+import { Transaction, AIStatementProfile } from '../types';
 import { STANDARD_CATEGORIES, getCategoryColor } from '../utils/categorizer';
+import { getActiveStatementProfile } from '../utils/statementProfileManager';
+import { DOMAIN_NAME, getFullDomainUrl } from '../utils/router';
 
 interface BudgetTrackerViewProps {
   transactions: Transaction[];
   isDarkMode?: boolean;
+  statementProfile?: AIStatementProfile;
   onNavigate: (tab: string) => void;
   onOpenDetailModal?: (tx: Transaction) => void;
 }
@@ -43,9 +49,14 @@ const DEFAULT_BUDGETS: Record<string, number> = {
 export const BudgetTrackerView: React.FC<BudgetTrackerViewProps> = ({
   transactions,
   isDarkMode = true,
+  statementProfile,
   onNavigate,
   onOpenDetailModal
 }) => {
+  const profile = useMemo(() => {
+    return statementProfile || getActiveStatementProfile();
+  }, [statementProfile]);
+
   // Load user custom budgets from local storage or defaults
   const [budgets, setBudgets] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('vault_user_budgets');
@@ -63,6 +74,16 @@ export const BudgetTrackerView: React.FC<BudgetTrackerViewProps> = ({
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [tempBudgetInput, setTempBudgetInput] = useState<string>('');
+  const [copiedUrl, setCopiedUrl] = useState(false);
+
+  const handleCopyBudgetUrl = () => {
+    const fullUrl = getFullDomainUrl('budget');
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(fullUrl);
+    }
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2500);
+  };
 
   const saveBudgets = (newBudgets: Record<string, number>) => {
     setBudgets(newBudgets);
@@ -142,7 +163,7 @@ export const BudgetTrackerView: React.FC<BudgetTrackerViewProps> = ({
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
+      currency: profile?.currency || 'USD',
       maximumFractionDigits: 0
     }).format(val);
   };
@@ -153,21 +174,40 @@ export const BudgetTrackerView: React.FC<BudgetTrackerViewProps> = ({
     return monthTransactions.filter((t) => (t.amount < 0 || t.type === 'outflow') && t.category === activeCategoryFilter);
   }, [monthTransactions, activeCategoryFilter]);
 
+  const theme = profile?.customUITheme || {
+    budgetTabLabel: "Food Bowl Budgets"
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-              <Target className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> Food Bowl Budgets (Monthly Targets)
+              <Target className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> {theme.budgetTabLabel} (Monthly Targets)
             </h2>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
-              Interactive Planner
-            </span>
+            <button
+              onClick={handleCopyBudgetUrl}
+              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:border-emerald-400 transition-colors cursor-pointer group"
+              title={`Direct URL: ${DOMAIN_NAME}/householdbudget`}
+            >
+              <Globe className="w-3 h-3 text-emerald-500 group-hover:rotate-12 transition-transform" />
+              <span>{DOMAIN_NAME}/householdbudget</span>
+              {copiedUrl ? (
+                <Check className="w-3 h-3 text-emerald-500 ml-0.5 animate-in zoom-in-50" />
+              ) : (
+                <Copy className="w-3 h-3 text-emerald-500/70 group-hover:text-emerald-500 ml-0.5" />
+              )}
+            </button>
+            {profile?.detectedPersona && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                {profile.detectedPersona}
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Help Zack budget his kibble and treats! Track category targets automatically as statements are fetched.
+            Help budget targets automatically as {profile?.institution || 'PDF Statements'} are analyzed.
           </p>
         </div>
 

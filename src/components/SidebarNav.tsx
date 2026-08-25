@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   LayoutDashboard, 
   UploadCloud, 
@@ -15,9 +15,16 @@ import {
   CheckCircle2,
   HardDrive,
   Compass,
-  FolderSync
+  FolderSync,
+  CalendarClock,
+  Globe,
+  Copy,
+  Check,
+  Activity
 } from 'lucide-react';
-import { VaultHealth } from '../types';
+import { VaultHealth, AIStatementProfile } from '../types';
+import { getActiveStatementProfile } from '../utils/statementProfileManager';
+import { ROUTES, getRouteByTab, DOMAIN_NAME, getFullDomainUrl } from '../utils/router';
 
 interface SidebarNavProps {
   activeTab: string;
@@ -26,11 +33,13 @@ interface SidebarNavProps {
   health: VaultHealth | null;
   isVaultLocked: boolean;
   isDarkMode?: boolean;
+  statementProfile?: AIStatementProfile;
 }
 
 interface MenuItem {
   id: string;
   label: string;
+  path: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
   badge?: string | null;
@@ -56,14 +65,44 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   transactionCount,
   health,
   isVaultLocked,
-  isDarkMode
+  isDarkMode,
+  statementProfile
 }) => {
+  const [copiedPath, setCopiedPath] = useState<string | null>(null);
+
+  const profile = useMemo(() => {
+    return statementProfile || getActiveStatementProfile();
+  }, [statementProfile]);
+
+  const activeRoute = useMemo(() => {
+    return getRouteByTab(activeTab);
+  }, [activeTab]);
+
+  const handleCopyCurrentUrl = (e: React.MouseEvent, tabId: string) => {
+    e.stopPropagation();
+    const url = getFullDomainUrl(tabId);
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(url);
+    }
+    setCopiedPath(tabId);
+    setTimeout(() => setCopiedPath(null), 2500);
+  };
+
+  const theme = profile?.customUITheme || {
+    dashboardTitle: "Zack's Doghouse",
+    budgetTabLabel: "Food Bowl Budgets",
+    subscriptionTabLabel: "Recurring Subscriptions",
+    ledgerTabLabel: "Golden Ledger",
+    personaBadge: "Personal Vault"
+  };
+
   const menuItems: MenuItem[] = [
     { 
       id: 'dashboard', 
-      label: "Zack's Doghouse", 
+      label: theme.dashboardTitle || "Zack's Doghouse", 
+      path: '/dashboard',
       icon: LayoutDashboard, 
-      description: 'Mascot mood & financial health',
+      description: profile?.institution ? `${profile.institution} Overview` : 'Mascot mood & financial health',
       color: {
         iconBg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20 group-hover:bg-cyan-500/20',
         iconText: 'text-cyan-400',
@@ -80,10 +119,11 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     },
     { 
       id: 'budget', 
-      label: 'Food Bowl Budgets', 
+      label: theme.budgetTabLabel || 'Household Budget', 
+      path: '/householdbudget',
       icon: Target, 
       badge: 'Targets',
-      description: 'Sniff out spending targets',
+      description: 'Zero-based envelope spending plan',
       color: {
         iconBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 group-hover:bg-emerald-500/20',
         iconText: 'text-emerald-400',
@@ -99,11 +139,33 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       }
     },
     { 
+      id: 'subscriptions', 
+      label: theme.subscriptionTabLabel || 'Recurring Subscriptions', 
+      path: '/subscriptions',
+      icon: CalendarClock, 
+      badge: profile?.detectedSubscriptions?.length ? `${profile.detectedSubscriptions.length} Found` : 'Auto-Audit',
+      description: 'Monthly & annual fixed commitments',
+      color: {
+        iconBg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20 group-hover:bg-cyan-500/20',
+        iconText: 'text-cyan-400',
+        iconBorder: 'border-cyan-500/20',
+        activeBg: 'bg-gradient-to-r from-cyan-950/70 to-slate-900',
+        activeBorder: 'border-cyan-500/50',
+        activeGlow: 'shadow-cyan-500/10',
+        activeIconBg: 'bg-gradient-to-tr from-cyan-500 to-sky-400 text-slate-950',
+        badgeBg: 'bg-cyan-500/15',
+        badgeText: 'text-cyan-300',
+        badgeBorder: 'border-cyan-500/30',
+        dotColor: 'bg-cyan-400'
+      }
+    },
+    { 
       id: 'debt-payoff', 
       label: 'Bone Burier (Debt Payoff)', 
+      path: '/debtpayoff',
       icon: Calculator, 
       badge: 'Calculators',
-      description: 'Chomp down loan balances',
+      description: 'Snowball & loan amortization',
       color: {
         iconBg: 'bg-amber-500/10 text-amber-400 border-amber-500/20 group-hover:bg-amber-500/20',
         iconText: 'text-amber-400',
@@ -121,8 +183,9 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     { 
       id: 'ingestion', 
       label: 'Fetch Bank Statements', 
+      path: '/bank-statements',
       icon: UploadCloud, 
-      badge: 'Auto & Manual',
+      badge: 'Vision AI',
       description: 'Chew on PDFs & auto-folders',
       color: {
         iconBg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20 group-hover:bg-indigo-500/20',
@@ -140,7 +203,8 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     },
     { 
       id: 'ledger', 
-      label: 'Golden Ledger', 
+      label: theme.ledgerTabLabel || 'Golden Ledger', 
+      path: '/ledger',
       icon: Receipt, 
       badge: transactionCount > 0 ? `${transactionCount}` : null,
       description: 'Full treat history log',
@@ -161,6 +225,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     { 
       id: 'rules', 
       label: "Zack's Learned Tricks", 
+      path: '/rules',
       icon: Wand2, 
       description: 'Auto-categorization commands',
       color: {
@@ -180,6 +245,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     { 
       id: 'security', 
       label: 'Guard Dog Vault Settings', 
+      path: '/security',
       icon: HardDrive, 
       description: 'Lock, wipe, or backup vault',
       color: {
@@ -196,20 +262,61 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         dotColor: 'bg-teal-400'
       }
     },
+    { 
+      id: 'nightly', 
+      label: 'Security & Audit Runs', 
+      path: '/security-audit',
+      icon: Activity, 
+      badge: 'Audit',
+      description: 'Zero-cloud & integrity verification',
+      color: {
+        iconBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 group-hover:bg-emerald-500/20',
+        iconText: 'text-emerald-400',
+        iconBorder: 'border-emerald-500/20',
+        activeBg: 'bg-gradient-to-r from-emerald-950/70 to-slate-900',
+        activeBorder: 'border-emerald-500/50',
+        activeGlow: 'shadow-emerald-500/10',
+        activeIconBg: 'bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950',
+        badgeBg: 'bg-emerald-500/15',
+        badgeText: 'text-emerald-300',
+        badgeBorder: 'border-emerald-500/30',
+        dotColor: 'bg-emerald-400'
+      }
+    },
   ];
 
   return (
     <aside className="w-full md:w-64 lg:w-72 bg-slate-950/95 text-slate-200 flex flex-col border-r border-slate-800/80 shrink-0 md:min-h-[calc(100vh-61px)] transition-colors">
+      {/* Active Domain Bar */}
+      <div className="px-4 py-2.5 bg-slate-900/60 border-b border-slate-800/80 flex items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-1.5 min-w-0 font-mono text-[11px] text-slate-300">
+          <Globe className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+          <span className="text-slate-400">{DOMAIN_NAME}</span>
+          <span className="text-cyan-400 font-bold truncate">{activeRoute.canonicalPath}</span>
+        </div>
+        <button
+          onClick={(e) => handleCopyCurrentUrl(e, activeTab)}
+          className="p-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-cyan-300 transition-colors shrink-0 cursor-pointer"
+          title={`Copy URL for ${activeRoute.canonicalPath}`}
+        >
+          {copiedPath === activeTab ? (
+            <Check className="w-3.5 h-3.5 text-emerald-400" />
+          ) : (
+            <Copy className="w-3.5 h-3.5" />
+          )}
+        </button>
+      </div>
+
       {/* Navigation Links */}
       <nav className="p-3 space-y-1 flex-1">
         <div className="px-3 pt-2 pb-1.5 flex items-center justify-between">
           <p className="text-[11px] font-semibold tracking-wide text-slate-400 flex items-center gap-1.5">
             <Compass className="w-3.5 h-3.5 text-cyan-400" />
-            Menu
+            Vault Pages
           </p>
-          <span className="text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1">
+          <span className="text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1 font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            Private Vault
+            Multi-Page
           </span>
         </div>
 
@@ -217,6 +324,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
           const Icon = item.icon;
           const isActive = activeTab === item.id;
           const { color } = item;
+          const isCopied = copiedPath === item.id;
 
           return (
             <button
@@ -240,26 +348,43 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                 </div>
 
                 <div className="min-w-0">
-                  <p className={`text-xs font-semibold truncate ${isActive ? 'text-white' : 'text-slate-200'}`}>
-                    {item.label}
-                  </p>
-                  <p className={`text-[10.5px] truncate ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>
-                    {item.description}
+                  <div className="flex items-center gap-1.5">
+                    <p className={`text-xs font-semibold truncate ${isActive ? 'text-white' : 'text-slate-200'}`}>
+                      {item.label}
+                    </p>
+                  </div>
+                  <p className="text-[10px] font-mono text-cyan-400/80 truncate">
+                    {item.path}
                   </p>
                 </div>
               </div>
 
-              {item.badge && (
+              <div className="flex items-center gap-1 shrink-0 ml-1.5">
+                {item.badge && (
+                  <span
+                    className={`text-[9.5px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                      isActive
+                        ? 'bg-white/15 text-white border-white/20 font-semibold'
+                        : `${color.badgeBg} ${color.badgeText} ${color.badgeBorder}`
+                    }`}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+                
+                {/* Quick copy page URL */}
                 <span
-                  className={`text-[9.5px] font-medium px-2 py-0.5 rounded-full shrink-0 ml-1.5 border transition-colors ${
-                    isActive
-                      ? 'bg-white/15 text-white border-white/20 font-semibold'
-                      : `${color.badgeBg} ${color.badgeText} ${color.badgeBorder}`
-                  }`}
+                  onClick={(e) => handleCopyCurrentUrl(e, item.id)}
+                  className="opacity-0 group-hover:opacity-100 hover:text-cyan-300 p-1 rounded transition-opacity cursor-pointer text-slate-400"
+                  title={`Copy ${DOMAIN_NAME}${item.path}`}
                 >
-                  {item.badge}
+                  {isCopied ? (
+                    <Check className="w-3 h-3 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-3 h-3" />
+                  )}
                 </span>
-              )}
+              </div>
             </button>
           );
         })}
@@ -286,21 +411,22 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
             <span className="text-emerald-400 font-semibold">100% Secure</span>
           </div>
           <div className="bg-slate-950/80 px-2 py-1.5 rounded-lg border border-slate-800 text-slate-300">
-            <span className="text-slate-400 block text-[9.5px] font-medium">STORAGE</span>
-            <span className="text-cyan-400 font-semibold">Offline Only</span>
+            <span className="text-slate-400 block text-[9.5px] font-medium">DOMAIN</span>
+            <span className="text-cyan-400 font-semibold">Multi-Page</span>
           </div>
         </div>
 
         <div className="pt-1 flex items-center justify-between text-[10.5px] text-slate-400">
-          <span>Local Vault Status</span>
-          <span className="text-emerald-400 flex items-center gap-1 font-semibold">
+          <span>Domain Status</span>
+          <span className="text-emerald-400 flex items-center gap-1 font-semibold font-mono text-[10px]">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            Ready & Safe
+            {DOMAIN_NAME}
           </span>
         </div>
       </div>
     </aside>
   );
 };
+
 
 
