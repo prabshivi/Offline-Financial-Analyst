@@ -116,17 +116,16 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
     const tabReactions: Record<string, string> = {
       dashboard: `Overview loaded! Mood: ${financialState.archetypeLabel} 📊🐶`,
       budget: "Budgets ready! Sniffing out spending targets! 🦴💵",
-      'debt-payoff': "Payoff & Loans! Let's eliminate balances together! ⚡",
-      ingestion: "Import Statements ready! Upload your bank files! 📂✨",
-      'auto-fetch': "Auto-Import ready! Drop files to sync automatically! 🎾",
-      ledger: "Transactions history loaded! 🔍",
-      rules: "Smart Category rules ready! 🧠",
-      security: "Private Backup & Vault active! 🛡️",
-      nightly: "Security Health check! All private & safe! ✨🛡️"
+      'debt-payoff': "Bone Burier Debt Suite ready! Let's eliminate balances! ⚡",
+      ingestion: "Fetch Bank Statements ready! Let's ingest bank files! 📂✨",
+      ledger: "Golden Ledger loaded! Scrutinizing every transaction! 🔍🐾",
+      rules: "Zack's Learned Tricks ready! Rules looking sharp! 🧠🐾",
+      security: "Guard Dog Vault Settings active! Private & secured! 🛡️"
     };
 
     if (tabReactions[activeTab]) {
       setMood(financialState.mood === 'zoomies' ? 'zoomies' : 'happy');
+      setDockSide(prev => prev === 'right' ? 'left' : 'right'); // alternate side spring-bounce
       say(tabReactions[activeTab], 3200);
       const timer = setTimeout(() => setMood(financialState.mood), 2400);
       return () => clearTimeout(timer);
@@ -334,10 +333,13 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
           </div>
         ) : (
           /* Sleek Interactive Mascot Card */
-          <div 
-            className="relative group flex flex-col items-center gap-1.5"
+          <motion.div 
+            className="relative group flex flex-col items-center gap-1.5 cursor-pointer"
             onMouseEnter={() => setShowControls(true)}
             onMouseLeave={() => setShowControls(false)}
+            whileHover={{ scale: 1.04, y: -2 }}
+            whileTap={{ scale: 0.94, rotate: [0, -2, 2, 0] }}
+            transition={{ type: "spring", stiffness: 400, damping: 17 }}
           >
             {/* 1. Receptive Speech Message Card - Positioned cleanly ABOVE the interaction control bar */}
             <AnimatePresence>
@@ -496,7 +498,7 @@ export const ZackRoamingCompanion: React.FC<ZackRoamingCompanionProps> = ({
                 }}
               />
             </div>
-          </div>
+          </motion.div>
         )}
       </motion.div>
 

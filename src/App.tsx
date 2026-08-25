@@ -7,8 +7,6 @@ import { IngestionView } from './components/IngestionView';
 import { MasterLedgerView } from './components/MasterLedgerView';
 import { RulesEngineView } from './components/RulesEngineView';
 import { SecurityVaultView } from './components/SecurityVaultView';
-import { NightlyRunsView } from './components/NightlyRunsView';
-import { AutoFetchView } from './components/AutoFetchView';
 import { DebtPayoffView } from './components/DebtPayoffView';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { TransactionDetailModal } from './components/TransactionDetailModal';
@@ -327,15 +325,10 @@ export default function App() {
                   isDarkMode={isDarkMode}
                   onCommitTransactions={handleCommitTransactions}
                   onNavigate={(tab) => setActiveTab(tab)}
-                />
-              )}
-
-              {activeTab === 'auto-fetch' && (
-                <AutoFetchView
                   onRefreshAllData={loadVaultData}
                 />
               )}
-
+ 
               {activeTab === 'ledger' && (
                 <MasterLedgerView
                   transactions={transactions}
@@ -347,7 +340,7 @@ export default function App() {
                   onOpenDetailModal={(tx) => setAuditTransaction(tx)}
                 />
               )}
-
+ 
               {activeTab === 'rules' && (
                 <RulesEngineView
                   rules={rules}
@@ -356,7 +349,7 @@ export default function App() {
                   onDeleteRule={handleDeleteRule}
                 />
               )}
-
+ 
               {activeTab === 'security' && (
                 <SecurityVaultView
                   health={health}
@@ -369,14 +362,6 @@ export default function App() {
                   onImportData={handleImportData}
                   onSeedSampleData={handleSeedSampleData}
                   isSeeding={isSeeding}
-                />
-              )}
-
-              {activeTab === 'nightly' && (
-                <NightlyRunsView
-                  isDarkMode={isDarkMode}
-                  onNavigate={(tab) => setActiveTab(tab)}
-                  lastLoginTime={lastLoginTime}
                 />
               )}
             </>

@@ -61,35 +61,35 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onNavigate('dashboard')}
               className="font-bold text-white text-base tracking-tight cursor-pointer hover:text-cyan-400 transition-colors flex items-center gap-1.5"
             >
-              <span>Vault</span>
+              <span>🐕 Zack's Treat Vault</span>
               <span className="text-slate-500 font-normal">|</span>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-300 font-semibold text-sm">
-                Personal Finance & Insights
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-300 font-semibold text-sm">
+                Smart Canine Finances
               </span>
             </h1>
             
             <span className="hidden lg:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
               <ShieldCheck className="w-3 h-3 text-cyan-400" />
-              Private & Offline
+              Air-Gapped Doghouse
             </span>
-
+ 
             <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              On-Device Storage
+              Local Bones Only
             </span>
           </div>
           <p className="text-[11px] text-slate-400 font-normal flex items-center gap-2 mt-0.5">
             <span className="flex items-center gap-1 text-slate-300">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Secure Local Database
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Secure Doghouse Database
             </span>
             <span className="text-slate-600">&bull;</span>
-            <span className="text-slate-300 font-semibold">{transactionCount} Transactions</span>
+            <span className="text-slate-300 font-semibold">{transactionCount} Treats Buried</span>
             <span className="text-slate-600">&bull;</span>
             <span className="text-slate-400 hidden md:inline">Duplicate Protection</span>
           </p>
         </div>
       </div>
-
+ 
       {/* Quick Action Tools - Only shown when unlocked */}
       {!isVaultLocked ? (
         <div className="flex items-center flex-wrap gap-2">
@@ -98,49 +98,49 @@ export const Header: React.FC<HeaderProps> = ({
             id="seed-sample-btn"
             onClick={onSeedSampleData}
             disabled={isSeeding}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 hover:border-amber-500/50 text-xs font-semibold transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 hover:border-amber-500/50 text-xs font-semibold transition-all shadow-sm cursor-pointer"
             title="Populate demo bank transactions to test charts and budgeting features"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>{isSeeding ? 'Loading Data...' : (transactionCount === 0 ? 'Load Demo Data' : 'Reset Demo Data')}</span>
+            <span>{isSeeding ? 'Fetching Bones...' : (transactionCount === 0 ? 'Fetch Demo Bones' : 'Bury New Demo Bones')}</span>
           </button>
-
+ 
           {/* Quick Statement Ingest */}
           <button
             id="quick-ingest-btn"
             onClick={() => onNavigate('ingestion')}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 border border-slate-700 text-white text-xs font-semibold transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 border border-slate-700 text-white text-xs font-semibold transition-all shadow-sm cursor-pointer"
           >
             <UploadCloud className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Import PDF / CSV</span>
+            <span>Fetch Statements</span>
           </button>
-
+ 
           {/* Quick Add Manual Transaction */}
           <button
             id="add-tx-btn"
             onClick={onOpenAddModal}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white text-xs font-bold transition-all shadow-sm shadow-cyan-600/20"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white text-xs font-bold transition-all shadow-sm shadow-cyan-600/20 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Add Record</span>
+            <span>Bury Single Transaction</span>
           </button>
-
+ 
           {/* Vault Lock Toggle */}
           <button
             id="vault-lock-btn"
             onClick={onToggleLock}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white text-xs font-semibold transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white text-xs font-semibold transition-all shadow-sm cursor-pointer"
             title="Click to lock vault"
           >
             <Unlock className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Unlocked</span>
+            <span>Ears Up! (Unlocked)</span>
           </button>
         </div>
       ) : (
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-rose-500/30 text-rose-300 text-xs font-mono">
             <Lock className="w-3.5 h-3.5 text-rose-400" />
-            <span>Vault Protected</span>
+            <span>Guard Dog Sleeping (Locked)</span>
           </div>
         </div>
       )}

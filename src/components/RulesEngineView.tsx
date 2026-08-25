@@ -108,19 +108,19 @@ export const RulesEngineView: React.FC<RulesEngineViewProps> = ({
       <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-            <Wand2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> Smart Category Rules
+            <Wand2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> Zack's Learned Tricks (Smart Rules)
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Auto-categorize transactions and replace messy bank description codes with clean merchant names
+            Teach Zack how to sniff out category labels and tidy up messy merchant text automatically.
           </p>
         </div>
 
         <button
           onClick={handleOpenAdd}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-colors"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
-          Create New Rule
+          Teach a Trick (New Rule)
         </button>
       </div>
 
@@ -199,12 +199,12 @@ export const RulesEngineView: React.FC<RulesEngineViewProps> = ({
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs overflow-hidden transition-colors">
         <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-750 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Active Rules Catalog</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Tricks Zack Memorized</h3>
             <span className="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full text-[11px] font-mono">
-              {rules.length} Rules
+              {rules.length} Tricks
             </span>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Applied automatically during statement ingestion</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Applied automatically when chewing on bank statements</p>
         </div>
 
         <div className="overflow-x-auto">

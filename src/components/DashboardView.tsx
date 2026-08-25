@@ -202,7 +202,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div>
           <div className="flex items-center gap-2.5">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-              Financial Overview
+              🐕 Zack's Doghouse Overview
             </h2>
             <div 
               className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/50 border border-amber-200/80 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-mono font-medium"
@@ -214,7 +214,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Real-time analytics computed directly from your local SQLite database
+            Real-time treat stats parsed offline by Zack's guard patrol
           </p>
         </div>
 
@@ -250,7 +250,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Total Inflow */}
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800/90 shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Income</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Bones Fetched (Income)</span>
             <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
               <TrendingUp className="w-5 h-5" />
             </div>
@@ -261,7 +261,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </p>
             <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 mt-1">
               <ArrowUpRight className="w-3.5 h-3.5" />
-              <span>Direct deposits & inflows</span>
+              <span>Scent trails of incoming treats</span>
             </p>
           </div>
         </div>
@@ -269,7 +269,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Total Outflow */}
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800/90 shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Expenses</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Treats Eaten (Expenses)</span>
             <div className="w-9 h-9 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold">
               <TrendingDown className="w-5 h-5" />
             </div>
@@ -279,7 +279,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {formatCurrency(metrics.totalOutflow)}
             </p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1 mt-1">
-              <span>{metrics.categoryBreakdown.length} spending categories</span>
+              <span>{metrics.categoryBreakdown.length} spending snack types</span>
             </p>
           </div>
         </div>
@@ -287,7 +287,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Net Savings */}
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800/90 shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Net Savings</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Buried Bones (Savings)</span>
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold ${
               metrics.netSavings >= 0 
                 ? 'bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300' 
@@ -305,7 +305,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <p className={`text-[11px] font-semibold mt-1 ${
               metrics.netSavings >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
             }`}>
-              {metrics.netSavings >= 0 ? 'Positive cash flow' : 'Expenses exceed income'}
+              {metrics.netSavings >= 0 ? 'Burying more than eating' : 'Eating faster than fetching'}
             </p>
           </div>
         </div>
@@ -313,7 +313,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Savings Rate */}
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800/90 shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Savings Rate</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Bone Storage Efficiency</span>
             <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
               <PiggyBank className="w-5 h-5" />
             </div>
@@ -339,7 +339,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div>
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                <PieChartIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Spending by Category
+                <PieChartIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Treat Distribution by Category
               </h3>
               <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
                 Click any slice to inspect
@@ -450,10 +450,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Monthly Cash Flow
+                <BarChart3 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Canine Cash Flow (Monthly Trends)
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Compare monthly income vs total expenditures
+                Compare monthly bones fetched vs treats eaten
               </p>
             </div>
 
@@ -515,14 +515,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   />
                   <Bar 
                     dataKey="inflow" 
-                    name="Income" 
+                    name="Bones Fetched" 
                     fill="#10B981" 
                     radius={[6, 6, 0, 0]} 
                     maxBarSize={36} 
                   />
                   <Bar 
                     dataKey="outflow" 
-                    name="Expenses" 
+                    name="Treats Eaten" 
                     fill={isDarkMode ? '#94A3B8' : '#64748B'} 
                     radius={[6, 6, 0, 0]} 
                     maxBarSize={36} 
@@ -612,9 +612,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="lg:col-span-5 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-4 transition-colors">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-              <ShoppingBag className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Top Spending Merchants
+              <ShoppingBag className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Top Treat Suppliers
             </h3>
-            <span className="text-xs text-slate-400 dark:text-slate-500">By total volume</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">By total treats consumed</span>
           </div>
 
           <div className="space-y-3">
@@ -662,7 +662,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="lg:col-span-7 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-4 transition-colors">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Recent Vault Activity
+              <Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Recent Scent Trails
             </h3>
             <button
               onClick={() => onNavigate('ledger')}

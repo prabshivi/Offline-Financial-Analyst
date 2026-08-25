@@ -61,9 +61,9 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   const menuItems: MenuItem[] = [
     { 
       id: 'dashboard', 
-      label: 'Overview', 
+      label: "Zack's Doghouse", 
       icon: LayoutDashboard, 
-      description: 'Cash flow & spending summary',
+      description: 'Mascot mood & financial health',
       color: {
         iconBg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20 group-hover:bg-cyan-500/20',
         iconText: 'text-cyan-400',
@@ -80,10 +80,10 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     },
     { 
       id: 'budget', 
-      label: 'Budgets', 
+      label: 'Food Bowl Budgets', 
       icon: Target, 
       badge: 'Targets',
-      description: 'Spending limits by category',
+      description: 'Sniff out spending targets',
       color: {
         iconBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 group-hover:bg-emerald-500/20',
         iconText: 'text-emerald-400',
@@ -100,10 +100,10 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     },
     { 
       id: 'debt-payoff', 
-      label: 'Payoff & Loans', 
+      label: 'Bone Burier (Debt Payoff)', 
       icon: Calculator, 
       badge: 'Calculators',
-      description: 'Mortgage & debt payoff plans',
+      description: 'Chomp down loan balances',
       color: {
         iconBg: 'bg-amber-500/10 text-amber-400 border-amber-500/20 group-hover:bg-amber-500/20',
         iconText: 'text-amber-400',
@@ -120,10 +120,10 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     },
     { 
       id: 'ingestion', 
-      label: 'Import Statements', 
+      label: 'Fetch Bank Statements', 
       icon: UploadCloud, 
-      badge: 'PDF & CSV',
-      description: 'Bank & credit card files',
+      badge: 'Auto & Manual',
+      description: 'Chew on PDFs & auto-folders',
       color: {
         iconBg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20 group-hover:bg-indigo-500/20',
         iconText: 'text-indigo-400',
@@ -139,31 +139,11 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       }
     },
     { 
-      id: 'auto-fetch', 
-      label: 'Auto-Import', 
-      icon: FolderSync, 
-      badge: 'Automatic',
-      description: 'Drop folder & scheduled sync',
-      color: {
-        iconBg: 'bg-violet-500/10 text-violet-400 border-violet-500/20 group-hover:bg-violet-500/20',
-        iconText: 'text-violet-400',
-        iconBorder: 'border-violet-500/20',
-        activeBg: 'bg-gradient-to-r from-violet-950/70 to-slate-900',
-        activeBorder: 'border-violet-500/50',
-        activeGlow: 'shadow-violet-500/10',
-        activeIconBg: 'bg-gradient-to-tr from-violet-500 to-fuchsia-400 text-slate-950',
-        badgeBg: 'bg-violet-500/15',
-        badgeText: 'text-violet-300',
-        badgeBorder: 'border-violet-500/30',
-        dotColor: 'bg-violet-400'
-      }
-    },
-    { 
       id: 'ledger', 
-      label: 'Transactions', 
+      label: 'Golden Ledger', 
       icon: Receipt, 
       badge: transactionCount > 0 ? `${transactionCount}` : null,
-      description: 'All spending & income history',
+      description: 'Full treat history log',
       color: {
         iconBg: 'bg-sky-500/10 text-sky-400 border-sky-500/20 group-hover:bg-sky-500/20',
         iconText: 'text-sky-400',
@@ -180,9 +160,9 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     },
     { 
       id: 'rules', 
-      label: 'Categories & Rules', 
+      label: "Zack's Learned Tricks", 
       icon: Wand2, 
-      description: 'Smart auto-tagging rules',
+      description: 'Auto-categorization commands',
       color: {
         iconBg: 'bg-rose-500/10 text-rose-400 border-rose-500/20 group-hover:bg-rose-500/20',
         iconText: 'text-rose-400',
@@ -199,9 +179,9 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     },
     { 
       id: 'security', 
-      label: 'Backup & Vault', 
+      label: 'Guard Dog Vault Settings', 
       icon: HardDrive, 
-      description: 'Private backup & exports',
+      description: 'Lock, wipe, or backup vault',
       color: {
         iconBg: 'bg-teal-500/10 text-teal-400 border-teal-500/20 group-hover:bg-teal-500/20',
         iconText: 'text-teal-400',
@@ -214,26 +194,6 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         badgeText: 'text-teal-300',
         badgeBorder: 'border-teal-500/30',
         dotColor: 'bg-teal-400'
-      }
-    },
-    { 
-      id: 'nightly', 
-      label: 'Security Health', 
-      icon: ShieldCheck, 
-      badge: 'Private',
-      description: 'Privacy & security checks',
-      color: {
-        iconBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 group-hover:bg-emerald-500/20',
-        iconText: 'text-emerald-400',
-        iconBorder: 'border-emerald-500/20',
-        activeBg: 'bg-gradient-to-r from-emerald-950/70 to-slate-900',
-        activeBorder: 'border-emerald-500/50',
-        activeGlow: 'shadow-emerald-500/10',
-        activeIconBg: 'bg-gradient-to-tr from-emerald-500 to-cyan-400 text-slate-950',
-        badgeBg: 'bg-emerald-500/15',
-        badgeText: 'text-emerald-300',
-        badgeBorder: 'border-emerald-500/30',
-        dotColor: 'bg-emerald-400'
       }
     },
   ];

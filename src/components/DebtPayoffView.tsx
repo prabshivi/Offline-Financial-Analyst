@@ -221,10 +221,10 @@ export const DebtPayoffView: React.FC<DebtPayoffViewProps> = ({ isDarkMode = tru
           </div>
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-xl font-bold text-slate-100">Debt Payoff & Mortgage Elimination Suite</h1>
+              <h1 className="text-xl font-bold text-slate-100">Bone Burier & Debt Payoff Suite</h1>
               <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 flex items-center gap-1">
                 <Sparkles className="w-3 h-3 text-indigo-400" />
-                Snowball vs. Avalanche
+                Bury Fast vs. Bury Smart
               </span>
             </div>
             <p className="text-sm text-slate-400 mt-1 max-w-2xl">
@@ -238,7 +238,7 @@ export const DebtPayoffView: React.FC<DebtPayoffViewProps> = ({ isDarkMode = tru
           <button
             id="btn-load-sample-debts"
             onClick={handleResetDefaults}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-slate-700/80 transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-slate-700/80 transition-all shadow-sm cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
             Reset Defaults
@@ -247,7 +247,7 @@ export const DebtPayoffView: React.FC<DebtPayoffViewProps> = ({ isDarkMode = tru
           <button
             id="btn-export-debt-csv"
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-slate-700/80 transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-slate-700/80 transition-all shadow-sm cursor-pointer"
           >
             <Download className="w-3.5 h-3.5 text-slate-400" />
             Export Plan
@@ -259,10 +259,10 @@ export const DebtPayoffView: React.FC<DebtPayoffViewProps> = ({ isDarkMode = tru
               setEditingDebt(null);
               setShowAddModal(true);
             }}
-            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl shadow-sm transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            Add Loan / Debt
+            Add Bone to Bury (Add Debt)
           </button>
         </div>
       </div>
@@ -272,7 +272,7 @@ export const DebtPayoffView: React.FC<DebtPayoffViewProps> = ({ isDarkMode = tru
         {/* Total Debt */}
         <div className="bg-slate-900/90 border border-slate-800/80 rounded-xl p-4.5 shadow-sm space-y-1">
           <div className="text-xs font-medium text-slate-400 flex items-center justify-between">
-            <span>Total Debt Balance</span>
+            <span>Total Bones Owed (Debt)</span>
             <DollarSign className="w-4 h-4 text-slate-500" />
           </div>
           <div className="text-2xl font-bold text-slate-100">
@@ -286,7 +286,7 @@ export const DebtPayoffView: React.FC<DebtPayoffViewProps> = ({ isDarkMode = tru
         {/* Debt Free Date */}
         <div className="bg-slate-900/90 border border-slate-800/80 rounded-xl p-4.5 shadow-sm space-y-1">
           <div className="text-xs font-medium text-slate-400 flex items-center justify-between">
-            <span>Debt-Free Horizon</span>
+            <span>Total Freedom Horizon</span>
             <Calendar className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-bold text-emerald-400">

@@ -33,11 +33,15 @@ import { STANDARD_CATEGORIES, cleanMerchantName, generateTransactionId } from '.
 import { scrubPII } from '../utils/security';
 import { api } from '../utils/api';
 
+
+import { AutoFetchStatus, AutoFetchLog } from '../types';
+
 interface IngestionViewProps {
   existingTransactions: Transaction[];
   isDarkMode?: boolean;
   onCommitTransactions: (staging: StagingTransaction[]) => Promise<{ inserted: number; duplicates: number }>;
   onNavigate: (tab: string) => void;
+  onRefreshAllData: () => Promise<void>;
 }
 
 const BANK_PRESETS: { id: string; name: string; accountLabel: string; badge: string; sub: string }[] = [
@@ -57,8 +61,18 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
   existingTransactions,
   isDarkMode = true,
   onCommitTransactions,
-  onNavigate
+  onNavigate,
+  onRefreshAllData
 }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'manual' | 'autofetch'>('manual');
+  
+  // Auto fetch state properties
+  const [autoStatus, setAutoStatus] = useState<AutoFetchStatus | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [selectedSimBank, setSelectedSimBank] = useState('RBC Royal Bank');
+  const [autoNotification, setAutoNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   const [institution, setInstitution] = useState<string>('RBC');
   const [accountName, setAccountName] = useState<string>('RBC Chequing / Avion');
   const [stagingData, setStagingData] = useState<StagingTransaction[]>([]);
@@ -75,6 +89,93 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const existingIds = new Set<string>(existingTransactions.map((t) => t.id));
+
+  const fetchAutoStatus = async () => {
+    try {
+      const data = await api.getAutoFetchStatus();
+      setAutoStatus(data);
+    } catch (err: any) {
+      console.error('Failed to load auto fetch status:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchAutoStatus();
+    const timer = setInterval(fetchAutoStatus, 8000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleManualScan = async () => {
+    setIsScanning(true);
+    setAutoNotification(null);
+    try {
+      const res = await api.scanDropzone();
+      await fetchAutoStatus();
+      await onRefreshAllData();
+      setAutoNotification({
+        type: 'success',
+        message: `Scan complete: Zack found ${res.filesScanned} file(s). Extracted ${res.totalExtracted} rows (${res.totalInserted} new treats, ${res.duplicates} duplicates skipped).`
+      });
+    } catch (err: any) {
+      setAutoNotification({
+        type: 'error',
+        message: `Scan failed: ${err.message}`
+      });
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const handleSimulateDrop = async () => {
+    setIsSimulating(true);
+    setAutoNotification(null);
+    try {
+      const res = await api.simulateDropzoneFile(selectedSimBank);
+      await fetchAutoStatus();
+      await onRefreshAllData();
+      setAutoNotification({
+        type: 'success',
+        message: `Simulation complete! Zack fetched and chewed on ${res.simulatedFile}. Inserted ${res.totalInserted} treats into the vault database!`
+      });
+    } catch (err: any) {
+      setAutoNotification({
+        type: 'error',
+        message: `Simulation failed: ${err.message}`
+      });
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
+  const handleToggleAutoScan = async () => {
+    if (!autoStatus) return;
+    try {
+      const newEnabled = !autoStatus.enabled;
+      await api.updateAutoFetchConfig({ enabled: newEnabled });
+      setAutoStatus({ ...autoStatus, enabled: newEnabled });
+    } catch (err: any) {
+      console.error('Failed to update config:', err);
+    }
+  };
+
+  const handleIntervalChange = async (interval: number) => {
+    if (!autoStatus) return;
+    try {
+      await api.updateAutoFetchConfig({ scanIntervalMinutes: interval });
+      setAutoStatus({ ...autoStatus, scanIntervalMinutes: interval });
+    } catch (err: any) {
+      console.error('Failed to update interval:', err);
+    }
+  };
+
+  const handleClearLogs = async () => {
+    try {
+      await api.clearAutoFetchLogs();
+      await fetchAutoStatus();
+    } catch (err: any) {
+      console.error('Failed to clear logs:', err);
+    }
+  };
 
   const handleSelectBankPreset = (preset: typeof BANK_PRESETS[0]) => {
     setInstitution(preset.id);
@@ -307,381 +408,491 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
   });
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+<div className="space-y-6 max-w-7xl mx-auto">
       {/* Header Banner */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-            <UploadCloud className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> Document & Statement Ingestion
+            <UploadCloud className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> Fetch Bank Statements
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Support for PDF statements, CSV exports, Excel CSV, OFX/QFX, TXT, and receipts with zero cloud exposure.
+            Retrieve, chew on, and sanitize bank files offline with zero cloud leaks.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl border border-slate-200/50 dark:border-slate-700/50">
           <button
-            onClick={handleDownloadSampleCsv}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
-            title="Download a formatted sample CSV file to test manual upload"
+            onClick={() => setActiveSubTab('manual')}
+            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === 'manual'
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                : 'text-slate-550 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+            }`}
           >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
-            Download CSV Template
+            Toss a File (Manual Upload)
           </button>
           <button
-            onClick={() => setShowPasteModal(true)}
-            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
+            onClick={() => setActiveSubTab('autofetch')}
+            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === 'autofetch'
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                : 'text-slate-550 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+            }`}
           >
-            Paste Text
-          </button>
-          <button
-            id="load-sample-statement-btn"
-            onClick={() => handleLoadSampleStatement()}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/60 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-900 dark:text-amber-300 text-xs font-semibold transition-colors shadow-xs"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-            Test Sample {institution}
+            Zack's Auto-Fetcher (Backyard Dropzone)
           </button>
         </div>
       </div>
 
-      {/* Error Alert */}
-      {/* Statement Type Detection Badge */}
-      {detectedStatementType && detectedStatementType !== 'unknown' && (
-        <div className={`p-4 rounded-2xl border flex items-center gap-3 text-sm animate-in fade-in transition-all ${
-          detectedStatementType === 'personal'
-            ? 'bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800/60 text-sky-900 dark:text-sky-100'
-            : 'bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-800/60 text-violet-900 dark:text-violet-100'
-        }`}>
-          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
-            detectedStatementType === 'personal'
-              ? 'bg-sky-600 text-white'
-              : 'bg-violet-600 text-white'
-          }`}>
-            {detectedStatementType === 'personal' ? (
-              <User className="w-5 h-5" />
-            ) : (
-              <Briefcase className="w-5 h-5" />
-            )}
+      {activeSubTab === 'manual' ? (
+        <>
+          {/* Manual Statements Top Bar Actions */}
+          <div className="flex justify-end gap-2 flex-wrap">
+            <button
+              onClick={handleDownloadSampleCsv}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+              title="Download a formatted sample CSV file to test manual upload"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-500" />
+              Download CSV Template
+            </button>
+            <button
+              onClick={() => setShowPasteModal(true)}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+            >
+              Paste Text
+            </button>
+            <button
+              id="load-sample-statement-btn"
+              onClick={() => handleLoadSampleStatement()}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/60 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-900 dark:text-amber-300 text-xs font-semibold transition-colors shadow-xs cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              Test Sample {institution}
+            </button>
           </div>
-          <div className="flex-1">
-            <p className="font-bold text-sm">
-              {detectedStatementType === 'personal' ? '🟢 Personal Statement Detected' : '🟣 Business / Incorporation Statement Detected'}
-            </p>
-            <p className={`text-xs mt-0.5 ${
+
+          {/* Statement Type Detection Badge */}
+          {detectedStatementType && detectedStatementType !== 'unknown' && (
+            <div className={`p-4 rounded-2xl border flex items-center gap-3 text-sm animate-in fade-in transition-all ${
               detectedStatementType === 'personal'
-                ? 'text-sky-700 dark:text-sky-300'
-                : 'text-violet-700 dark:text-violet-300'
+                ? 'bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800/60 text-sky-900 dark:text-sky-100'
+                : 'bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-800/60 text-violet-900 dark:text-violet-100'
             }`}>
-              {detectedStatementType === 'personal'
-                ? 'This document appears to be an individual/personal bank or credit card statement.'
-                : 'This document appears to be a business, corporate, or incorporation financial statement.'}
-            </p>
-          </div>
-          <span className={`px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase ${
-            detectedStatementType === 'personal'
-              ? 'bg-sky-200 dark:bg-sky-800 text-sky-800 dark:text-sky-200'
-              : 'bg-violet-200 dark:bg-violet-800 text-violet-800 dark:text-violet-200'
-          }`}>
-            {detectedStatementType === 'personal' ? 'Personal' : 'Business'}
-          </span>
-        </div>
-      )}
-
-      {errorMessage && (
-        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/60 text-rose-900 dark:text-rose-200 flex items-start gap-3 text-xs">
-          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="font-bold">Ingestion Notice</p>
-            <p className="mt-0.5 text-rose-800 dark:text-rose-300">{errorMessage}</p>
-          </div>
-          <button onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-700 font-bold">&times;</button>
-        </div>
-      )}
-
-      {/* Success Notification Banner */}
-      {commitResult && (
-        <div className="p-5 rounded-3xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in shadow-xs">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
-              <CheckCircle2 className="w-5 h-5" />
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                detectedStatementType === 'personal'
+                  ? 'bg-sky-600 text-white'
+                  : 'bg-violet-600 text-white'
+              }`}>
+                {detectedStatementType === 'personal' ? (
+                  <User className="w-5 h-5" />
+                ) : (
+                  <Briefcase className="w-5 h-5" />
+                )}
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-sm">
+                  {detectedStatementType === 'personal' ? '🟢 Personal Statement Detected' : '🟣 Business / Incorporation Statement Detected'}
+                </p>
+                <p className={`text-xs mt-0.5 ${
+                  detectedStatementType === 'personal'
+                    ? 'text-sky-700 dark:text-sky-300'
+                    : 'text-violet-700 dark:text-violet-300'
+                }`}>
+                  {detectedStatementType === 'personal'
+                    ? 'This document appears to be an individual/personal bank or credit card statement.'
+                    : 'This document appears to be a business, corporate, or incorporation financial statement.'}
+                </p>
+              </div>
+              <span className={`px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase ${
+                detectedStatementType === 'personal'
+                  ? 'bg-sky-200 dark:bg-sky-800 text-sky-800 dark:text-sky-200'
+                  : 'bg-violet-200 dark:bg-violet-800 text-violet-800 dark:text-violet-200'
+              }`}>
+                {detectedStatementType === 'personal' ? 'Personal' : 'Business'}
+              </span>
             </div>
-            <div>
-              <p className="font-bold text-sm text-emerald-950 dark:text-white">Successfully Saved to Vault Database!</p>
-              <p className="text-xs text-emerald-800 dark:text-emerald-300 mt-0.5">
-                <span className="font-bold">{commitResult.inserted}</span> transactions stored permanently in SQLite database. 
-                {commitResult.duplicates > 0 && ` (${commitResult.duplicates} duplicates automatically skipped).`}
-              </p>
+          )}
+
+          {errorMessage && (
+            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/60 text-rose-900 dark:text-rose-200 flex items-start gap-3 text-xs">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-bold">Ingestion Notice</p>
+                <p className="mt-0.5 text-rose-800 dark:text-rose-300">{errorMessage}</p>
+              </div>
+              <button onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-705 font-bold">&times;</button>
             </div>
-          </div>
-          <button
-            onClick={() => onNavigate('ledger')}
-            className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition-all shadow-xs shrink-0 flex items-center gap-1.5"
-          >
-            <span>View in Master Ledger</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
+          )}
 
-      {/* Ingestion Steps */}
-      <div className="space-y-4">
-        {/* Step 1: Bank Preset Picker */}
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-3 transition-colors">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
-              <span>Step 1: Choose Financial Institution / Format</span>
-            </h3>
-            <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-              Selected: {institution} ({accountName})
-            </span>
-          </div>
+          {commitResult && (
+            <div className="p-5 rounded-3xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in shadow-xs">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-bold text-sm text-emerald-950 dark:text-white">Successfully Saved to Vault Database!</p>
+                  <p className="text-xs text-emerald-800 dark:text-emerald-300 mt-0.5">
+                    <span className="font-bold">{commitResult.inserted}</span> treats stored permanently in the database. 
+                    {commitResult.duplicates > 0 && ` (${commitResult.duplicates} duplicates automatically skipped).`}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => onNavigate('ledger')}
+                className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition-all shadow-xs shrink-0 flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>View Scent Trail in Ledger</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
-            {BANK_PRESETS.map((preset) => {
-              const isSelected = institution === preset.id;
-              return (
-                <button
-                  key={preset.id}
-                  id={`preset-${preset.id.toLowerCase().replace(/\s+/g, '-')}`}
-                  onClick={() => handleSelectBankPreset(preset)}
-                  className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between ${
-                    isSelected
-                      ? 'border-slate-900 dark:border-emerald-500 bg-slate-900 dark:bg-slate-800 text-white shadow-md'
-                      : 'border-slate-200/90 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 hover:bg-white dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-800 dark:text-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <Building2 className={`w-4 h-4 ${isSelected ? 'text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`} />
-                    {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400" />}
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold truncate">{preset.name}</p>
-                    <div className="flex items-center justify-between mt-0.5">
-                      <span className={`text-[10px] truncate ${isSelected ? 'text-slate-300' : 'text-slate-400 dark:text-slate-500'}`}>
+          {/* Ingestion Steps */}
+          <div className="space-y-4">
+            {/* Step 1: Bank Preset Picker */}
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-3 transition-colors">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                  <span>Step 1: Choose Financial Institution / Format</span>
+                </h3>
+                <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                  Selected: {institution} ({accountName})
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+                {BANK_PRESETS.map((preset) => {
+                  const isSelected = institution === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      onClick={() => handleSelectBankPreset(preset)}
+                      className={`p-3 rounded-2xl border text-left transition-all hover:scale-102 flex flex-col justify-between h-20 relative overflow-hidden cursor-pointer ${
+                        isSelected
+                          ? 'bg-emerald-500/10 dark:bg-emerald-950/30 border-emerald-500 text-slate-900 dark:text-white shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-950/50 border-slate-200/80 dark:border-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-900 hover:border-slate-350 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      <div>
+                        <p className="font-bold text-[11.5px] truncate">{preset.name}</p>
+                        <p className="text-[9.5px] text-slate-400 mt-0.5 truncate">{preset.sub}</p>
+                      </div>
+                      <span className={`text-[8.5px] font-bold font-mono px-1.5 py-0.5 rounded self-start ${
+                        isSelected 
+                          ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' 
+                          : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                      }`}>
                         {preset.badge}
                       </span>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-        {/* Step 2: Drag & Drop Dropzone */}
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-4 transition-colors">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              Step 2: Upload Document or Statement File
-            </h3>
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500 font-mono">
-              <span>Accepted: .pdf, .csv, .tsv, .txt, .ofx, .qfx, .json, .png, .jpg</span>
+            {/* Step 2: Dropzone Area */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+              <div 
+                className={`md:col-span-12 border-2 border-dashed rounded-3xl p-8 text-center flex flex-col items-center justify-center gap-3 transition-all relative overflow-hidden bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-850 ${
+                  dragOver ? 'border-emerald-500 bg-emerald-500/5 scale-[0.99]' : ''
+                }`}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  const files = e.dataTransfer.files;
+                  if (files && files.length > 0) processFiles(Array.from(files));
+                }}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-slate-950 flex items-center justify-center border border-slate-200 dark:border-slate-800 shadow-xs text-slate-500">
+                  <UploadCloud className="w-6 h-6 text-emerald-500 animate-pulse" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800 dark:text-white">Toss Statement PDF or CSV File here</p>
+                  <p className="text-[10px] text-slate-400 mt-1 max-w-sm mx-auto">
+                    Drag and drop your bank files, or click to browse. PII is scrubbed locally before parsing.
+                  </p>
+                </div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  multiple
+                  accept=".csv,.pdf,.xlsx,.txt,.ofx,.qfx"
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all hover:scale-105 cursor-pointer shadow-sm"
+                >
+                  Browse Files
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        /* Zack's Auto-Fetcher Sub-Tab */
+        <div className="space-y-6">
+          {/* Status & Settings */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+            <div className="md:col-span-5 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-xl">
+                  🐶
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Zack's Automatic Fetcher</h3>
+                  <p className="text-[10.5px] text-slate-400 font-mono">Directory Watcher Settings</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Zack checks your local folder periodically for new statements, scrubs their PII, and buries the treats in the vault database.
+              </p>
+
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Canine Watcher</span>
+                  <button
+                    onClick={handleToggleAutoScan}
+                    className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all cursor-pointer ${
+                      autoStatus?.enabled
+                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                        : 'bg-slate-800 text-slate-400 border border-slate-700'
+                    }`}
+                  >
+                    {autoStatus?.enabled ? 'Active / Sniffing' : 'Asleep'}
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Sniffing Frequency</span>
+                  <select
+                    value={autoStatus?.scanIntervalMinutes || 30}
+                    onChange={(e) => handleIntervalChange(parseInt(e.target.value))}
+                    className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-xl px-2 py-1 text-[11px] text-slate-300 focus:outline-none"
+                  >
+                    <option value={15}>Every 15 min</option>
+                    <option value={30}>Every 30 min (Default)</option>
+                    <option value={60}>Every hour</option>
+                    <option value={360}>Every 6 hours</option>
+                  </select>
+                </div>
+
+                <div className="text-[11px] bg-slate-50 dark:bg-slate-950/60 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-850 space-y-1 text-slate-400">
+                  <p className="font-semibold text-slate-300">Backyard Path:</p>
+                  <code className="text-[9.5px] block truncate font-mono text-cyan-400">
+                    {autoStatus?.dropzonePath || 'data/dropzone'}
+                  </code>
+                </div>
+              </div>
+
+              {/* Scan Trigger Whistle Button */}
+              <button
+                onClick={handleManualScan}
+                disabled={isScanning}
+                className="w-full flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all hover:scale-[1.02] shadow-md cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
+                <span>{isScanning ? 'Zack is fetching...' : 'Blow the Whistle (Scan Folder)'}</span>
+              </button>
+            </div>
+
+            {/* Simulation Play Area */}
+            <div className="md:col-span-7 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  Dropzone Simulator
+                </h3>
+                <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 font-bold font-mono">
+                  Sandbox Testing
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-500">
+                Don't have real statements on hand? Toss a simulated bank file into the backyard watcher folder! Zack will fetch, sanitize, and parse it in real-time.
+              </p>
+
+              <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-850 space-y-3">
+                <label className="block text-[11px] font-mono text-slate-400">Pick a Bank Statement Template:</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {['RBC Royal Bank', 'TD Canada Trust', 'Chase Bank', 'Apple Card'].map((bank) => (
+                    <button
+                      key={bank}
+                      onClick={() => setSelectedSimBank(bank)}
+                      className={`p-2.5 rounded-xl border text-xs text-center font-semibold transition-all cursor-pointer ${
+                        selectedSimBank === bank
+                          ? 'bg-amber-500/15 border-amber-500 text-amber-300'
+                          : 'bg-slate-900/60 border-slate-800 text-slate-450 hover:bg-slate-800'
+                      }`}
+                    >
+                      {bank}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={handleSimulateDrop}
+                  disabled={isSimulating}
+                  className="w-full py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-amber-300 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <span>🎾 Toss Simulated {selectedSimBank} Statement</span>
+                </button>
+              </div>
+
+              {autoNotification && (
+                <div className={`p-3 rounded-2xl text-xs font-mono border ${
+                  autoNotification.type === 'success'
+                    ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                    : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                }`}>
+                  {autoNotification.message}
+                </div>
+              )}
             </div>
           </div>
 
-          <input
-            id="statement-file-input"
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileUpload}
-            multiple
-            accept=".csv,.txt,.tsv,.pdf,.json,.ofx,.qfx,.qbo,.png,.jpg,.jpeg,.webp"
-            className="hidden"
-          />
-
-          <div
-            id="statement-dropzone"
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                processFiles(Array.from(e.dataTransfer.files));
-              }
-            }}
-            className={`border-2 border-dashed rounded-3xl p-8 sm:p-12 text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-3.5 ${
-              dragOver
-                ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/40 scale-[1.01]'
-                : 'border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 bg-slate-50/50 dark:bg-slate-950/40 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20'
-            }`}
-          >
-            <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-800 shadow-xs border border-slate-200 dark:border-slate-700 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-              {isProcessing ? (
-                <RefreshCw className="w-8 h-8 animate-spin text-emerald-500" />
-              ) : (
-                <UploadCloud className="w-8 h-8" />
+          {/* Sync Scent Trails (Logs) */}
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Recent Statement Scent Trails</h3>
+              {autoStatus?.logs && autoStatus.logs.length > 0 && (
+                <button
+                  onClick={handleClearLogs}
+                  className="text-xs text-rose-400 hover:text-rose-300 underline font-medium cursor-pointer"
+                >
+                  Clear Scent History
+                </button>
               )}
             </div>
 
-            <div className="space-y-1">
-              <p className="text-base font-bold text-slate-900 dark:text-white">
-                {isProcessing ? processingStatus || 'Parsing document...' : 'Click to browse or drag & drop document'}
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-lg mx-auto">
-                Upload your bank statement PDF, CSV spreadsheet, or statement photo. Files are securely analyzed client-side and saved into your local encrypted vault.
-              </p>
-            </div>
-
-            {lastUploadedFileName && !isProcessing && (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-200/80 dark:bg-slate-800 text-xs font-mono text-slate-700 dark:text-slate-300">
-                <FileCheck className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Last uploaded: {lastUploadedFileName}</span>
+            {autoStatus?.logs && autoStatus.logs.length > 0 ? (
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-850">
+                <table className="w-full text-left text-xs font-sans">
+                  <thead className="bg-slate-50 dark:bg-slate-950 text-slate-400 uppercase font-mono text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-850">
+                    <tr>
+                      <th className="py-2.5 px-4">Timestamp</th>
+                      <th className="py-2.5 px-4">Filename</th>
+                      <th className="py-2.5 px-4">Treats Extracted</th>
+                      <th className="py-2.5 px-4">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-850 text-slate-200">
+                    {autoStatus.logs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/40">
+                        <td className="py-3 px-4 font-mono text-[11px] text-slate-400">
+                          {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </td>
+                        <td className="py-3 px-4 font-bold text-slate-300 truncate max-w-xs">{log.fileName}</td>
+                        <td className="py-3 px-4 text-emerald-400 font-mono font-bold">
+                          {log.transactionsInserted} / {log.transactionsExtracted}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            log.status === 'success'
+                              ? 'bg-emerald-500/10 text-emerald-400'
+                              : 'bg-rose-500/10 text-rose-455'
+                          }`}>
+                            {log.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-8 text-center bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-slate-200 dark:border-slate-850">
+                <p className="text-xs text-slate-500 font-mono">No scent trails detected. Throw some statements in the backyard dropzone folder!</p>
               </div>
             )}
-
-            <div className="flex items-center gap-3 pt-1">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                Zero cloud exposure &bull; Local SQLite storage
-              </span>
-            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Step 3: Interactive Staging Review Table */}
-      {stagingData.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800/90 shadow-md overflow-hidden space-y-0 transition-colors">
-          {/* Staging Control Top Bar */}
-          <div className="p-5 bg-slate-900 dark:bg-slate-800 text-white flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-extrabold text-base">
-                {stagingData.length}
-              </div>
-              <div>
-                <h3 className="font-bold text-sm">Step 3: Verify & Save Parsed Transactions</h3>
-                <div className="flex items-center gap-2 text-xs text-slate-300">
-                  <span className="text-emerald-400 font-semibold">{newCount} New to save</span>
-                  <span>&bull;</span>
-                  <span className="text-amber-400">{duplicateCount} Duplicates skipped</span>
-                </div>
-              </div>
+      {/* Manual Staging Table Render */}
+      {activeSubTab === 'manual' && stagingData.length > 0 && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-3xl overflow-hidden shadow-sm animate-in slide-in-from-bottom-2 duration-300">
+          <div className="p-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-850 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <span>Staged Transactions</span>
+                <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold">
+                  {stagingData.length} records ready
+                </span>
+              </h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">Edit or categorize rows before committing permanently.</p>
             </div>
-
-            <div className="flex items-center gap-2.5 flex-wrap">
-              {/* Flip Signs Action */}
-              <button
-                onClick={handleFlipSigns}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 dark:bg-slate-900 hover:bg-slate-700 dark:hover:bg-slate-750 text-slate-200 text-xs font-medium border border-slate-700 transition-colors"
-                title="Invert positive/negative values if debits were formatted as positives"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
-                <span>Flip +/- Signs</span>
-              </button>
-
-              {/* Filter by Category */}
-              <select
-                value={selectedCategoryFilter}
-                onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 dark:bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none"
-              >
-                <option value="all">All Staged Categories</option>
-                {STANDARD_CATEGORIES.map((c) => (
-                  <option key={c.name} value={c.name}>{c.name}</option>
-                ))}
-              </select>
-
-              {/* Commit Button */}
-              <button
-                id="commit-vault-btn"
-                onClick={handleCommit}
-                disabled={isProcessing || newCount === 0}
-                className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-md ${
-                  newCount > 0
-                    ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-950/30'
-                    : 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                <ShieldCheck className="w-4 h-4" />
-                {isProcessing ? 'Securing in Vault...' : `Save ${newCount} Transactions into Vault`}
-              </button>
-            </div>
+            <button
+              onClick={() => setStagingData([])}
+              className="text-xs text-rose-500 hover:text-rose-600 underline font-medium cursor-pointer"
+            >
+              Discard All
+            </button>
           </div>
 
-          {/* Staging Data Table */}
-          <div className="overflow-x-auto max-h-[460px]">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-50 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300 font-semibold uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200 dark:border-slate-750">
+          <div className="overflow-x-auto max-h-96">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 dark:bg-slate-950 text-slate-400 uppercase font-mono text-[9px] tracking-wider border-b border-slate-200 dark:border-slate-850 sticky top-0 z-10">
                 <tr>
-                  <th className="py-3 px-4 w-14 text-center">Status</th>
-                  <th className="py-3 px-4 w-32">Date</th>
-                  <th className="py-3 px-4">Original Memo</th>
-                  <th className="py-3 px-4">Clean Merchant</th>
-                  <th className="py-3 px-4 w-44">Category</th>
-                  <th className="py-3 px-4 w-28 text-right">Amount ($)</th>
-                  <th className="py-3 px-4 w-16 text-center">Action</th>
+                  <th className="py-2.5 px-4">Date</th>
+                  <th className="py-2.5 px-4">Merchant (PII Sanitized)</th>
+                  <th className="py-2.5 px-4">Category</th>
+                  <th className="py-2.5 px-4 text-right">Amount</th>
+                  <th className="py-2.5 px-4 text-center">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-normal text-slate-700 dark:text-slate-200">
-                {filteredStaging.map((row) => {
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-850 text-slate-800 dark:text-slate-200">
+                {stagingData.map((row) => {
+                  const isDuplicate = existingIds.has(row.id);
                   return (
-                    <tr
-                      key={row.tempId}
-                      className={`hover:bg-slate-50/90 dark:hover:bg-slate-800/60 transition-colors ${
-                        row.isDuplicate ? 'bg-amber-50/40 dark:bg-amber-950/30 text-slate-400' : ''
+                    <tr 
+                      key={row.tempId} 
+                      className={`hover:bg-slate-50/50 dark:hover:bg-slate-950/40 transition-colors ${
+                        isDuplicate ? 'opacity-40 bg-amber-500/5' : ''
                       }`}
                     >
-                      {/* Duplicate Status */}
-                      <td className="py-2.5 px-4 text-center">
-                        {row.isDuplicate ? (
-                          <span
-                            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60"
-                            title="Hash matches existing record in vault.db. Will be skipped automatically."
-                          >
-                            Duplicate
-                          </span>
-                        ) : (
-                          <span
-                            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
-                            title="Unique new transaction. Will be securely saved to vault."
-                          >
-                            New
-                          </span>
-                        )}
-                      </td>
-
                       {/* Date */}
-                      <td className="py-2.5 px-4">
-                        <input
-                          type="date"
-                          value={row.date}
-                          onChange={(e) => handleUpdateRow(row.tempId, 'date', e.target.value)}
-                          className="w-full bg-transparent border-0 border-b border-transparent focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-800 px-1 py-0.5 font-mono text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
-                        />
-                      </td>
-
-                      {/* Raw Description */}
-                      <td className="py-2.5 px-4 max-w-xs truncate font-mono text-[11px] text-slate-500 dark:text-slate-400" title={row.raw_description}>
-                        {row.raw_description}
-                      </td>
-
-                      {/* Clean Merchant */}
-                      <td className="py-2.5 px-4">
+                      <td className="py-2.5 px-4 font-mono">
                         <input
                           type="text"
-                          value={row.clean_merchant}
-                          onChange={(e) => handleUpdateRow(row.tempId, 'clean_merchant', e.target.value)}
-                          className="w-full bg-slate-50 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-750 focus:bg-white dark:focus:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1 text-xs text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          value={row.date}
+                          onChange={(e) => handleUpdateRow(row.tempId, 'date', e.target.value)}
+                          className="bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:outline-none w-20 py-0.5 font-mono"
                         />
                       </td>
 
-                      {/* Category Selector */}
+                      {/* Description */}
+                      <td className="py-2.5 px-4 min-w-[200px]">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={row.clean_merchant}
+                            onChange={(e) => handleUpdateRow(row.tempId, 'clean_merchant', e.target.value)}
+                            className="bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:outline-none w-full py-0.5 font-semibold text-slate-900 dark:text-slate-100"
+                          />
+                          {isDuplicate && (
+                            <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 font-mono text-[9px] font-bold select-none shrink-0" title="Duplicate transaction detected">
+                              DUP
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Category */}
                       <td className="py-2.5 px-4">
                         <select
                           value={row.category}
                           onChange={(e) => handleUpdateRow(row.tempId, 'category', e.target.value)}
-                          className="w-full bg-slate-50 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-750 focus:bg-white dark:focus:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1 text-xs text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-slate-200"
                         >
-                          {STANDARD_CATEGORIES.map((cat) => (
-                            <option key={cat.name} value={cat.name} className="dark:bg-slate-900 dark:text-slate-100">
-                              {cat.name}
-                            </option>
+                          {STANDARD_CATEGORIES.map((c) => (
+                            <option key={c.name} value={c.name}>{c.name}</option>
                           ))}
                         </select>
                       </td>
@@ -693,9 +904,7 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
                           step="0.01"
                           value={row.amount}
                           onChange={(e) => handleUpdateRow(row.tempId, 'amount', parseFloat(e.target.value) || 0)}
-                          className={`w-24 text-right bg-slate-50 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-750 focus:bg-white dark:focus:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1 text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
-                            row.amount >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-900 dark:text-white'
-                          }`}
+                          className="bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:outline-none w-20 text-right font-mono text-emerald-600 dark:text-emerald-400 font-bold"
                         />
                       </td>
 
@@ -703,7 +912,7 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
                       <td className="py-2.5 px-4 text-center">
                         <button
                           onClick={() => handleDeleteRow(row.tempId)}
-                          className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition-colors"
+                          className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition-colors cursor-pointer"
                           title="Remove from staging"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -720,20 +929,20 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
           <div className="p-4 bg-slate-50 dark:bg-slate-800/90 border-t border-slate-200 dark:border-slate-755 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-400 transition-colors">
             <div className="flex items-center gap-2">
               <span className="font-bold text-slate-800 dark:text-slate-200">Ready to save:</span>
-              <span>{newCount} unique records will be stored into vault.db</span>
+              <span>{newCount} unique records will be stored in database</span>
             </div>
 
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setStagingData([])}
-                className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 underline font-medium"
+                className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 underline font-medium cursor-pointer"
               >
                 Clear Staged Rows
               </button>
               <button
                 onClick={handleCommit}
                 disabled={isProcessing || newCount === 0}
-                className={`px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs ${
+                className={`px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
                   newCount > 0
                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                     : 'bg-slate-300 dark:bg-slate-700 text-slate-500 dark:text-slate-400 cursor-not-allowed'
@@ -752,7 +961,7 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-xl w-full p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">Paste Statement Text Lines</h3>
-              <button onClick={() => setShowPasteModal(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-sm font-semibold">
+              <button onClick={() => setShowPasteModal(false)} className="text-slate-400 hover:text-slate-750 dark:hover:text-slate-200 text-sm font-semibold cursor-pointer">
                 &times;
               </button>
             </div>
@@ -769,13 +978,13 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setShowPasteModal(false)}
-                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleProcessPastedText}
-                className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-emerald-600 text-white text-xs font-medium hover:bg-slate-800 dark:hover:bg-emerald-500"
+                className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-emerald-600 text-white text-xs font-medium hover:bg-slate-800 dark:hover:bg-emerald-500 cursor-pointer"
               >
                 Parse & Stage Lines
               </button>
@@ -784,5 +993,3 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
         </div>
       )}
     </div>
-  );
-};
