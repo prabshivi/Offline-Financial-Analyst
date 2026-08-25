@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   UploadCloud, 
   FileText, 
@@ -993,3 +993,5 @@ export const IngestionView: React.FC<IngestionViewProps> = ({
         </div>
       )}
     </div>
+  );
+};
