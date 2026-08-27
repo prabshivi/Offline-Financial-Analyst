@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { Header } from './components/Header';
 import { SidebarNav } from './components/SidebarNav';
 import { DashboardView } from './components/DashboardView';
@@ -487,6 +488,9 @@ export default function App() {
         onUpdate={handleUpdateTransaction}
         onDelete={handleDeleteTransaction}
       />
+
+      {/* Vercel Web Analytics */}
+      <Analytics />
     </div>
   );
 }
